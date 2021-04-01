@@ -1,0 +1,146 @@
+using LinearAlgebra
+include("units.jl")
+
+function r_psi_hydrogen_bonds(coords::AbstractMatrix)
+    """
+    Computes the r-psi hydrogen bond of a collection of water molecules, 
+    returning which of the atoms is donating a hydrogen bond to the other ones.
+
+    Args:
+        coords: 3xN matrix of coordinates in OHH order
+    Returns:
+        hbonds: dictionary mapping the index of the atoms which donate a hydrogen bond to index of the atom they donate to
+    """
+    O_indices  = range(1, size(coords, 2), step=3)
+    H_indices = sort!([range(2, size(coords, 2), step=3); range(3, size(coords, 2), step=3)])
+    hbonds = Dict{Int, Int}()
+    for oxygen_index in O_indices
+        for hydrogen_index in H_indices
+            if !(oxygen_index + 1 == hydrogen_index || oxygen_index + 2 == hydrogen_index)
+                if is_a_hydrogen_bond(hydrogen_index, oxygen_index, coords)
+                    hbonds[hydrogen_index] = oxygen_index
+                end
+            end
+        end
+    end
+    return hbonds
+end
+export r_psi_hydrogen_bonds
+
+function is_a_hydrogen_bond(hydrogen_index::Int, oxygen_index::Int, coords::AbstractMatrix)
+    """
+    Tests if the hydrogen at hydrogen_index is hbonded to oxygen_index. If so, returns true.
+    Coords is required to be in OHH order and in angstroms.
+    """
+    acceptor_OH1 = view(coords, :, oxygen_index) - view(coords, :, oxygen_index+1)
+    acceptor_OH2 = view(coords, :, oxygen_index) - view(coords, :, oxygen_index+2)
+    water_normal = cross(acceptor_OH1, acceptor_OH2)
+    r = view(coords, :, hydrogen_index) - view(coords, :, oxygen_index)
+
+    ψ = acosd(dot(water_normal, r) / (norm(water_normal) * norm(r)))
+    if ψ > 90.0
+        ψ = 180.0 - ψ
+    end
+    
+    N = exp(-norm(r) / 0.343) * (7.1 - 0.05 * ψ + 0.00021 * ψ^2)
+    return N > 0.0085
+end
+
+function number_of_hydrogen_bonds(coords::AbstractMatrix)
+    """
+    returns the number of hydrogen bonds in an OHH-sorted water system.
+    """
+    return length(r_psi_hydrogen_bonds(coords))
+end
+
+function number_of_hydrogen_bonds(coords::Array{Array{Float64, 2}, 1})
+    """
+    returns the number of hydrogen bonds in a sequence of OHH-sorted water systems.
+    """
+    number_of_hydrogen_bonds_in_each_frame = zeros(Int, length(coords))
+    for (i, coord) in enumerate(coords)
+        number_of_hydrogen_bonds_in_each_frame[i] = number_of_hydrogen_bonds(coord)
+    end
+    return number_of_hydrogen_bonds_in_each_frame
+end
+
+function sort_waters(coords::AbstractMatrix, labels::AbstractVector; to_angstrom::Bool = false)
+    """
+    Sorts waters based on distance criteria into OHH order.
+    Takes the associated labels for simplicity of determining which atoms are oxygens.
+    """
+    @assert isinteger(length(labels) / 3) "Number of atoms not divisible by 3. Can't be only waters."
+    
+    distance_condition::Float64 = 1.4 # ansgtroms
+    if to_angstrom
+        distance_condition *= conversion(:angstrom, :bohr)
+    end
+
+    sorted_indices = zeros(Int, length(labels))
+    oxygen_indices::Array{Int} = zeros(Int, length(labels) ÷ 3)
+    hydrogen_indices::Array{Int} = zeros(Int, 2 * (length(labels) ÷ 3))
+    # get the oxygen and hydrogen indices
+    O_counter::Int = 0
+    H_counter::Int = 0
+    for (i, label) in enumerate(labels)
+        if label == "O" || label == "o"
+            O_counter += 1
+            oxygen_indices[O_counter] = i
+            sorted_indices[3*O_counter-2] = i
+        elseif label == "H" || label == "h"
+            H_counter += 1
+            hydrogen_indices[H_counter] = i
+        end
+    end
+    for (i_Oxygen, O_vec) in enumerate(eachcol(view(coords, :, oxygen_indices)))
+        num_H_found::Int = 1
+        for (i_Hydrogen, H_vec) in enumerate(eachcol(view(coords, :, hydrogen_indices)))
+            if (norm(O_vec - H_vec) < distance_condition)
+                sorted_indices[3*(i_Oxygen - 1) + num_H_found + 1] = hydrogen_indices[i_Hydrogen]
+                num_H_found += 1
+            end
+        end
+    end
+
+    return coords[:, sorted_indices]
+end
+
+function sort_waters(coords::AbstractArray{AbstractMatrix, 1}, labels::AbstractArray{AbstractVector, 1}; to_angstrom::Bool = false)
+    Threads.@threads for (i, coord) in enumerate(coords)
+        coords[i] = sort_waters(coord, labels[i], to_angstrom=to_angstrom)
+    end
+end
+
+function sort_water_molecules_to_oxygens_first(coords::AbstractMatrix)
+    """
+    Sorts waters in OHHOHH order to OOHHHH order.
+    """
+    new_coords = zero(coords)
+    j::Int=1
+    Nw::Int=div(size(coords, 2), 3)
+    for i = 1:Nw
+        new_coords[:,i] = coords[:,(i-1)*3+1]
+        new_coords[:,Nw+j] = coords[:,(i-1)*3+2]
+        new_coords[:,Nw+j+1] = coords[:,(i-1)*3+3]
+        j += 2
+    end
+    return new_coords
+end
+export sort_water_molecules_to_oxygens_first
+
+function sort_oxygens_first_to_water_molecules(coords::AbstractMatrix)
+    """
+    Sorts waters in OOHHHH order to OHHOHH order.
+    """
+    new_coords = zero(coords)
+    j::Int=1
+    Nw::Int=div(size(coords, 2), 3)
+    for i = 1:Nw
+        new_coords[:,(i-1)*3+1] = coords[:,i]
+        new_coords[:,(i-1)*3+2] = coords[:,Nw+j]
+        new_coords[:,(i-1)*3+3] = coords[:,Nw+j+1]
+        j += 2
+    end
+    return new_coords
+end
+export sort_oxygens_first_to_water_molecules

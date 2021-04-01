@@ -1,0 +1,17 @@
+
+function conversion(unit1::Symbol, unit2::Symbol)
+    units = Dict(
+        # energy conversions
+        :hartree      => 1.0,
+        :kcal         => 627.509608031,
+        :wavenumbers  => 219474.63,
+        :ev           => 27.2115985349,
+        # distances
+        :bohr         => 1.0,
+        :angstrom     => 0.529177210903,
+        # masses
+        :amu          => 1.0,
+        :au           => 1822.88839
+    )
+    return units[unit2] / units[unit1]
+end
