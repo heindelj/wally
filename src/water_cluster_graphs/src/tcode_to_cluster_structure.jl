@@ -206,7 +206,7 @@ function optimize_directed_graph_guesses(tcode_file::AbstractString, ref_structu
     # launch each of the asynchronous tasks with the segments of data each
     # task operates on as well as a unique file name to write to.
     @sync for (i, range) in enumerate(ranges)
-            outfile = string(splitext(out_file_name)[1], "_", i, splitext(out_file_name)[2])
+            outfile = string(splitext(out_file_name)[1], "_", "0"^(length(digits(num_tasks)) - length(digits(i))), i, splitext(out_file_name)[2])
             optimize() = optimize_directed_graph_guesses(guess_geoms[range], label[:], potential_constructor(), out_file_name=outfile)
             # launch the optimization task
             @async optimize()
