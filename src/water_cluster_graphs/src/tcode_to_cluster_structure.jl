@@ -159,32 +159,17 @@ function optimize_directed_graph_guesses(guess_geoms::AbstractArray{Array{Float6
     end
 end
 
-function optimize_directed_graph_guesses(tcode_file::AbstractString, ref_structure_file::AbstractString, potential::AbstractPotential; out_file_name::AbstractString="optimized_structures.xyz", write_every::Int=100)
-    """
-    Convenience overload so the potential itself can be passed.
-    """
-
-    println("Reading in the tcodes and reference structure...")
-    tcodes = load_tcode_file(tcode_file)
-    header, label, ref_geom = read_xyz(ref_structure_file)
-
-    println("Forming the guess structures...")
-    guess_geoms = structures_from_tcode(tcodes, ref_geom[1])
-
-    println("Doing the optimizations...")
-
-    optimize_directed_graph_guesses(guess_geoms, label, potential, out_file_name=out_file_name)
-end
-
-function optimize_directed_graph_guesses(tcode_file::AbstractString, ref_structure_file::AbstractString, potential_constructor::Function; num_tasks::Int=8, out_file_name::AbstractString="optimized_structures.xyz", write_every::Int=100)
+function optimize_directed_graph_guesses(tcode_file::AbstractString, ref_structure_file::AbstractString, potential::AbstractPotential; num_tasks::Int=8, out_file_name::AbstractString="optimized_structures.xyz", write_every::Int=100)
     """
     Calls the overload of this function which does the optimization and writing
     but with the optimizations to be split into num_tasks different asynchronous tasks.
-    Additionally, rather than taking an AbstractPotential, we take a constructor for
-    that potential to avoid a lack of thread safety in the potential being called.
+    The potential must be re-constructible from a version of itself to avoid lack of thread safety.
     """
-    @assert typeof(potential_constructor()) <: AbstractPotential "potential_constructor needs to construct an AbstractPotential."
-                
+
+    if num_tasks == 1
+        num_tasks = 1
+    elseif num_tasks < Threads.nthreads()
+        num_tasks = Threads.nthreads()
 
     println("Reading in the tcodes and reference structure...")
     tcodes = load_tcode_file(tcode_file)
@@ -207,7 +192,7 @@ function optimize_directed_graph_guesses(tcode_file::AbstractString, ref_structu
     # task operates on as well as a unique file name to write to.
     @sync for (i, range) in enumerate(ranges)
             outfile = string(splitext(out_file_name)[1], "_", "0"^(length(digits(num_tasks)) - length(digits(i))), i, splitext(out_file_name)[2])
-            optimize() = optimize_directed_graph_guesses(guess_geoms[range], label[:], potential_constructor(), out_file_name=outfile)
+            optimize() = optimize_directed_graph_guesses(guess_geoms[range], label[:], typeof(potential)(potential), out_file_name=outfile)
             # launch the optimization task
             @async optimize()
     end

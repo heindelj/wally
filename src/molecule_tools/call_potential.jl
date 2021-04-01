@@ -9,19 +9,20 @@ abstract type AbstractPotential end
 # TTM struct and some useful constructors
 mutable struct TTM <: AbstractPotential
     potential_function::Ptr
-    lib_path::String
+    full_lib_path::String
+    version::AbstractString
     update_data::Bool
     current_energy::Float64
     current_gradients::Union{Array{Float64, 1}, Array{Float64, 2}}
 end
 
-TTM(lib_name::AbstractString) = TTM(dlsym(dlopen(lib_name), "ttm2f"), dirname(lib_name), true, 0.0, zeros((0,0)))
-TTM(lib_name::AbstractString, version::AbstractString) = TTM(dlsym(dlopen(lib_name), version), dirname(lib_name), true, 0.0, zeros((0,0)))
+TTM(lib_name::AbstractString) = TTM(dlsym(dlopen(lib_name), "ttm2f"), lib_name, "ttm2f", true, 0.0, zeros((0,0)))
+TTM(lib_name::AbstractString, version::AbstractString) = TTM(dlsym(dlopen(lib_name), version), lib_name, version, true, 0.0, zeros((0,0)))
 TTM() = TTM(dlsym(dlopen("/home/heindelj/Research/Sotiris/MBE_Dynamics/MBE_Dynamics_Home_Code/pyMD/bin/ttm_all.so"), "ttm2f"), 
-            dirname("/home/heindelj/Research/Sotiris/MBE_Dynamics/MBE_Dynamics_Home_Code/pyMD/bin/ttm_all.so"), true, 0.0, zeros((0,0)))
+            "/home/heindelj/Research/Sotiris/MBE_Dynamics/MBE_Dynamics_Home_Code/pyMD/bin/ttm_all.so", "ttm2f", true, 0.0, zeros((0,0)))
 TTM(version::AbstractString) = TTM(dlsym(dlopen("/home/heindelj/Research/Sotiris/MBE_Dynamics/MBE_Dynamics_Home_Code/pyMD/bin/ttm_all.so"), version), 
-            dirname("/home/heindelj/Research/Sotiris/MBE_Dynamics/MBE_Dynamics_Home_Code/pyMD/bin/ttm_all.so"), true, 0.0, zeros((0,0)))
-
+            "/home/heindelj/Research/Sotiris/MBE_Dynamics/MBE_Dynamics_Home_Code/pyMD/bin/ttm_all.so", version, true, 0.0, zeros((0,0)))
+TTM(ttm::TTM) = TTM(ttm.full_lib_path, ttm.version)
 
 function get_energy_and_gradients(potential::TTM, coords::AbstractArray; sort_coords::Bool=true, reshape_coords::Bool=false)
     if reshape_coords
@@ -48,7 +49,7 @@ end
 function get_energy(potential::TTM, coords::AbstractArray; sort_coords::Bool=true, reshape_coords::Bool=false)
     if potential.update_data
         cwd = String(pwd())
-        cd(potential.lib_path)
+        cd(dirname(potential.full_lib_path))
         potential.current_energy, potential.current_gradients = get_energy_and_gradients(potential, coords, sort_coords=sort_coords, reshape_coords=reshape_coords)
         cd(cwd)
         potential.update_data = false
@@ -62,7 +63,7 @@ end
 function get_gradients(potential::TTM, coords::AbstractArray; sort_coords::Bool=true, reshape_coords::Bool=false)
     if potential.update_data
         cwd = String(pwd())
-        cd(potential.lib_path)
+        cd(dirname(potential.full_lib_path))
         potential.current_energy, potential.current_gradients = get_energy_and_gradients(potential, coords, sort_coords=sort_coords, reshape_coords=reshape_coords)
         cd(cwd)
         potential.update_data = false
@@ -81,9 +82,10 @@ end
 
 mutable struct MBPol <: AbstractPotential
     potential_function::Ptr
-    lib_path::String
+    full_lib_path::String
 end
-MBPol(lib_name::AbstractString) = MBPol(dlsym(dlopen(lib_name), "calcpotg_"), dirname(lib_name))
+MBPol(full_lib_path::AbstractString) = MBPol(dlsym(dlopen(full_lib_path), "calcpotg_"), full_lib_path)
+MBPol(mbpol::MBPol) = MBPol(mbpol.full_lib_path)
 
 function get_energy_and_gradients(potential::MBPol, coords::AbstractArray; reshape_coords::Bool=false)
     if reshape_coords
@@ -103,7 +105,7 @@ end
 
 function get_energy(potential::MBPol, coords::AbstractArray; reshape_coords::Bool=false)
     cwd = String(pwd())
-    cd(potential.lib_path)
+    cd(dirname(potential.full_lib_path))
     energy = get_energy_and_gradients(potential, coords, reshape_coords=reshape_coords)[1]
     cd(cwd)
     return energy
@@ -111,7 +113,7 @@ end
 
 function get_gradients(potential::MBPol, coords::AbstractArray; reshape_coords::Bool=false)
     cwd = String(pwd())
-    cd(potential.lib_path)
+    cd(dirname(potential.full_lib_path))
     grads = get_energy_and_gradients(potential, coords, reshape_coords=reshape_coords)[2]
     cd(cwd)
     return grads
@@ -119,7 +121,7 @@ end
 
 function get_gradients!(potential::MBPol, storage::AbstractArray, coords::AbstractArray; reshape_coords::Bool=false)
     cwd = String(pwd())
-    cd(potential.lib_path)
+    cd(dirname(potential.full_lib_path))
     storage[:] = collect(get_energy_and_gradients(potential, coords, reshape_coords=reshape_coords)[2])
     cd(cwd)
 end
