@@ -170,6 +170,7 @@ function optimize_directed_graph_guesses(tcode_file::AbstractString, ref_structu
         num_tasks = 1
     elseif num_tasks < Threads.nthreads()
         num_tasks = Threads.nthreads()
+    end
 
     println("Reading in the tcodes and reference structure...")
     tcodes = load_tcode_file(tcode_file)
