@@ -11,6 +11,7 @@ mutable struct TTM <: AbstractPotential
     potential_function::Ptr
     full_lib_path::String
     version::AbstractString
+
     update_data::Bool
     current_energy::Float64
     current_gradients::Union{Array{Float64, 1}, Array{Float64, 2}}
@@ -18,7 +19,7 @@ end
 
 TTM(lib_name::AbstractString) = TTM(dlsym(dlopen(lib_name), "ttm2f"), lib_name, "ttm2f", true, 0.0, zeros((0,0)))
 TTM(lib_name::AbstractString, version::AbstractString) = TTM(dlsym(dlopen(lib_name), version), lib_name, version, true, 0.0, zeros((0,0)))
-TTM() = TTM(dlsym(dlopen("/home/heindelj/Research/Sotiris/MBE_Dynamics/MBE_Dynamics_Home_Code/pyMD/bin/ttm_all.so"), "ttm2f"), 
+TTM() = TTM(dlsym(dlopen(lib_name), version), 
             "/home/heindelj/Research/Sotiris/MBE_Dynamics/MBE_Dynamics_Home_Code/pyMD/bin/ttm_all.so", "ttm2f", true, 0.0, zeros((0,0)))
 TTM(version::AbstractString) = TTM(dlsym(dlopen("/home/heindelj/Research/Sotiris/MBE_Dynamics/MBE_Dynamics_Home_Code/pyMD/bin/ttm_all.so"), version), 
             "/home/heindelj/Research/Sotiris/MBE_Dynamics/MBE_Dynamics_Home_Code/pyMD/bin/ttm_all.so", version, true, 0.0, zeros((0,0)))
@@ -83,8 +84,11 @@ end
 mutable struct MBPol <: AbstractPotential
     potential_function::Ptr
     full_lib_path::String
+    update_data::Bool
+    current_energy::Float64
+    current_gradients::Union{Array{Float64, 1}, Array{Float64, 2}}
 end
-MBPol(full_lib_path::AbstractString) = MBPol(dlsym(dlopen(full_lib_path), "calcpotg_"), full_lib_path)
+MBPol(full_lib_path::AbstractString) = MBPol(dlsym(dlopen(full_lib_path), "calcpotg_"), full_lib_path, true, 0.0, zeros((0,0)))
 MBPol(mbpol::MBPol) = MBPol(mbpol.full_lib_path)
 
 function get_energy_and_gradients(potential::MBPol, coords::AbstractArray; reshape_coords::Bool=false)
@@ -104,42 +108,55 @@ function get_energy_and_gradients(potential::MBPol, coords::AbstractArray; resha
 end
 
 function get_energy(potential::MBPol, coords::AbstractArray; reshape_coords::Bool=false)
-    cwd = String(pwd())
-    cd(dirname(potential.full_lib_path))
-    energy = get_energy_and_gradients(potential, coords, reshape_coords=reshape_coords)[1]
-    cd(cwd)
-    return energy
+    if potential.update_data
+        cwd = String(pwd())
+        cd(dirname(potential.full_lib_path))
+        potential.current_energy, potential.current_gradients = get_energy_and_gradients(potential, coords, reshape_coords=reshape_coords)
+        cd(cwd)
+        potential.update_data = false
+        return potential.current_energy
+    else
+        potential.update_data = true
+        return potential.current_energy
+    end
 end
 
 function get_gradients(potential::MBPol, coords::AbstractArray; reshape_coords::Bool=false)
-    cwd = String(pwd())
-    cd(dirname(potential.full_lib_path))
-    grads = get_energy_and_gradients(potential, coords, reshape_coords=reshape_coords)[2]
-    cd(cwd)
-    return grads
+    if potential.update_data
+        cwd = String(pwd())
+        cd(dirname(potential.full_lib_path))
+        potential.current_energy, potential.current_gradients = get_energy_and_gradients(potential, coords, reshape_coords=reshape_coords)
+        cd(cwd)
+        potential.update_data = false
+        return potential.current_gradients
+    else
+        potential.update_data = true
+        return potential.current_gradients
+    end
 end
 
 function get_gradients!(potential::MBPol, storage::AbstractArray, coords::AbstractArray; reshape_coords::Bool=false)
-    cwd = String(pwd())
-    cd(dirname(potential.full_lib_path))
-    storage[:] = collect(get_energy_and_gradients(potential, coords, reshape_coords=reshape_coords)[2])
-    cd(cwd)
+    storage[:] = get_gradients(potential, coords, reshape_coords=reshape_coords)
 end
 
 ### PROTONATED WATER POTENTIAL ###
 
 mutable struct Protonated_Water <: AbstractPotential
-    lib_path::AbstractString
+    full_lib_path::AbstractString
     init_function::Ptr
     energy_function::Ptr
     energy_and_gradient_function::Ptr
     is_initialized::Int32 # for compatibility with fortran
+
+    update_data::Bool
+    current_energy::Float64
+    current_gradients::Union{Array{Float64, 1}, Array{Float64, 2}}
 end
 Protonated_Water(lib_path::AbstractString) = Protonated_Water(lib_path, 
-dlsym(dlopen(string(lib_path, "libBowmanProtWater.so")), "initialize_potential_"),
-dlsym(dlopen(string(lib_path, "libBowmanProtWater.so")), "get_energy_"),
-dlsym(dlopen(string(lib_path, "libBowmanProtWater.so")), "get_energy_and_gradients_"),
-0)
+dlsym(dlopen(full_lib_path), "initialize_potential_"),
+dlsym(dlopen(full_lib_path), "get_energy_"),
+dlsym(dlopen(full_lib_path), "get_energy_and_gradients_"),
+0, true, 0.0, zeros((0,0)))
 
 function get_energy(potential::Protonated_Water, coords::AbstractArray; reshape_coords::Bool=false)
     num_waters::Int32 = 0
@@ -172,32 +189,37 @@ function get_energy_and_gradients(potential::Protonated_Water, coords::AbstractA
         num_waters = get_num_waters(coords)
     end
 
-    cwd = String(pwd())
-    cd(potential.lib_path)
+    if potential.update_data
+        cwd = String(pwd())
+        cd(dirname(potential.lib_path))
 
-    if potential.is_initialized == 0
-        ccall(potential.init_function, Cvoid, (Ref{Int32},), num_waters)
-        potential.is_initialized = 1
-    end
+        if potential.is_initialized == 0
+            ccall(potential.init_function, Cvoid, (Ref{Int32},), num_waters)
+            potential.is_initialized = 1
+        end
 
-    energy = Float64[0]
-    grads = zeros(Float64, length(coords))
-    ccall(potential.energy_and_gradient_function, Cvoid, (Ref{Cdouble}, Ref{Int32}, Ref{Cdouble}, Ref{Cdouble}), coords, num_waters, energy, grads)
-    cd(cwd)
+        energy = Float64[0]
+        grads = zeros(Float64, length(coords))
+        ccall(potential.energy_and_gradient_function, Cvoid, (Ref{Cdouble}, Ref{Int32}, Ref{Cdouble}, Ref{Cdouble}), coords, num_waters, energy, grads)
+        cd(cwd)
 
-    if reshape_coords
-        grads = vec(grads)
+        if reshape_coords
+            grads = vec(grads)
+        else
+            grads = reshape(grads, size(coords))
+        end
+        potential.current_energy = energy[begin]
+        potential.current_gradients = grads
+        potential.update_data = false
+        return potential.current_energy, potential.current_gradients
     else
-        grads = reshape(grads, size(coords))
+        potential.update_data = true
+        return potential.current_energy, potential.current_gradients
     end
-    return energy[begin], grads
 end
 
 function get_gradients!(potential::Protonated_Water, storage::AbstractArray, coords::AbstractArray; reshape_coords::Bool=false)
-    cwd = String(pwd())
-    cd(potential.lib_path)
-    storage[:] = collect(get_energy_and_gradients(potential, coords, reshape_coords=reshape_coords)[2])
-    cd(cwd)
+    storage[:] = get_energy_and_gradients(potential, coords, reshape_coords=reshape_coords)[2]
 end
 
 function get_num_waters(coords::AbstractArray)
