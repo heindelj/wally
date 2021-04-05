@@ -26,3 +26,4 @@ Manifest.toml
 # Project specific files used while testing
 src/**/data/**
 src/**/*.code-workspace
+src/*.xyz

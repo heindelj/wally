@@ -55,6 +55,12 @@ function write_xyz(outfile::AbstractString, header::AbstractArray, labels::Abstr
     if append
         mode = "a"
     end
+    if length(header) != length(geoms)
+        header = [header[1] for i in 1:length(geoms)]
+    end
+    if length(labels) != length(geoms)
+        labels = [labels[1] for i in 1:length(geoms)]
+    end
     open(outfile, mode) do io
         for (i_geom, head) in enumerate(header)
             write(io, string(head, "\n"))

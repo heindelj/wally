@@ -152,30 +152,35 @@ mutable struct Protonated_Water <: AbstractPotential
     current_energy::Float64
     current_gradients::Union{Array{Float64, 1}, Array{Float64, 2}}
 end
-Protonated_Water(lib_path::AbstractString) = Protonated_Water(lib_path, 
+
+Protonated_Water(full_lib_path::AbstractString) = Protonated_Water(full_lib_path, 
 dlsym(dlopen(full_lib_path), "initialize_potential_"),
 dlsym(dlopen(full_lib_path), "get_energy_"),
 dlsym(dlopen(full_lib_path), "get_energy_and_gradients_"),
 0, true, 0.0, zeros((0,0)))
 
+Protonated_Water() = Protonated_Water("/home/heindelj/Research/Sotiris/Potentials/PES_HP/PES/libBowmanProtWater.so")
+
 function get_energy(potential::Protonated_Water, coords::AbstractArray; reshape_coords::Bool=false)
     num_waters::Int32 = 0
     if reshape_coords
-        new_coords = reshape(copy(coords), (3, div(length(coords), 3)))
-        num_waters = get_num_waters(new_coords)
-    else
-        num_waters = get_num_waters(coords)
+        coords = reshape(coords, (3, :))
     end
+    num_waters = get_num_waters(coords)
 
     cwd = String(pwd())
-    cd(potential.lib_path)
+    cd(dirname(potential.full_lib_path))
     if potential.is_initialized == 0
         ccall(potential.init_function, Cvoid, (Ref{Int32},), num_waters)
         potential.is_initialized = 1
     end
     energy = Float64[0]
-    ccall(potential.energy_function, Cvoid, (Ref{Cdouble}, Ref{Int32}, Ref{Cdouble}), new_coords, num_waters, energy)
+    ccall(potential.energy_function, Cvoid, (Ref{Cdouble}, Ref{Int32}, Ref{Cdouble}), coords, num_waters, energy)
     cd(cwd)
+
+    if reshape_coords
+        coords = vec(coords)
+    end
 
     return energy[begin]
 end
@@ -183,15 +188,13 @@ end
 function get_energy_and_gradients(potential::Protonated_Water, coords::AbstractArray; reshape_coords::Bool=false)
     num_waters::Int32 = 0
     if reshape_coords
-        new_coords = reshape(copy(coords), (3, div(length(coords), 3)))
-        num_waters = get_num_waters(new_coords)
-    else
-        num_waters = get_num_waters(coords)
+        coords = reshape(coords, (3, :))
     end
+    num_waters = get_num_waters(coords)
 
     if potential.update_data
         cwd = String(pwd())
-        cd(dirname(potential.lib_path))
+        cd(dirname(potential.full_lib_path))
 
         if potential.is_initialized == 0
             ccall(potential.init_function, Cvoid, (Ref{Int32},), num_waters)
@@ -204,6 +207,7 @@ function get_energy_and_gradients(potential::Protonated_Water, coords::AbstractA
         cd(cwd)
 
         if reshape_coords
+            coords = vec(coords)
             grads = vec(grads)
         else
             grads = reshape(grads, size(coords))
@@ -216,6 +220,10 @@ function get_energy_and_gradients(potential::Protonated_Water, coords::AbstractA
         potential.update_data = true
         return potential.current_energy, potential.current_gradients
     end
+end
+
+function get_gradients(potential::Protonated_Water, coords::AbstractArray; reshape_coords::Bool=false)
+    return get_energy_and_gradients(potential, coords, reshape_coords=reshape_coords)[2]
 end
 
 function get_gradients!(potential::Protonated_Water, storage::AbstractArray, coords::AbstractArray; reshape_coords::Bool=false)

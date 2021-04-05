@@ -2,16 +2,16 @@ include("call_potential.jl")
 include("read_xyz.jl")
 using Optim
 
-function optimize_xyz(geom::AbstractVecOrMat{Float64}, potential::AbstractPotential; show_trace::Bool=true)
+function optimize_xyz(geom::AbstractVecOrMat{Float64}, potential::AbstractPotential; g_tol=0.0001, iterations=2000, show_every=10, show_trace::Bool=true)
     shape = size(geom)
     results = optimize(geom -> get_energy(potential, vec(geom), reshape_coords=true),
                     (grads, x) -> get_gradients!(potential, grads, x, reshape_coords=true),
                            geom,
                            LBFGS(),
-                           Optim.Options(g_tol=1e-4,
+                           Optim.Options(g_tol=g_tol,
                                          show_trace=show_trace,
-                                         show_every=10,
-                                         iterations=2000))
+                                         show_every=show_every,
+                                         iterations=iterations))
     final_geom = reshape(Optim.minimizer(results), shape)
     return (Optim.minimum(results), final_geom)
 end
