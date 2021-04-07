@@ -93,7 +93,7 @@ function write_cluster_families(header::Array{String,1}, labels::Array{Array{Str
             lowest_energy = (lowest_energy < energy) ? lowest_energy : energy
         end
 
-        ofile = string("W", N_atoms ÷ 3, "_", lowest_energy, "_kcal_family_", i_family, ".xyz")
+        ofile = string("W", N_atoms ÷ 3, "_", "family_", i_family, "_", lowest_energy, "_kcal", ".xyz")
 
         family_labels = view(labels, family_indices)
         family_geoms = view(geoms, family_indices)

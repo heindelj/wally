@@ -132,7 +132,7 @@ function structures_from_tcode(t_codes::AbstractArray{tcode, 1}, ref_coords::Abs
     return structure_from_tcode.(t_codes, (ref_coords,), OH_distance=OH_distance, free_OH_distance=free_OH_distance)
 end
 
-function optimize_directed_graph_guesses(guess_geoms::AbstractArray{Array{Float64, 2}, 1}, labels::AbstractArray{Array{String, 1}}, potential::AbstractPotential; out_file_name::AbstractString="optimized_structures.xyz", write_every::Int=100)
+function optimize_directed_graph_guesses(guess_geoms::AbstractArray{Array{Float64, 2}, 1}, labels::AbstractArray{Array{String, 1}}, potential::AbstractPotential; out_file_name::AbstractString="optimized_structures.xyz")
     """
     Optimize the actual guess structures and write the results to specified
     output file.
@@ -146,7 +146,7 @@ function optimize_directed_graph_guesses(guess_geoms::AbstractArray{Array{Float6
     end
 end
 
-function optimize_directed_graph_guesses(tcode_file::AbstractString, ref_structure_file::AbstractString, potential::AbstractPotential; num_tasks::Int=8, out_file_name::AbstractString="optimized_structures.xyz", write_every::Int=100)
+function optimize_directed_graph_guesses(tcode_file::AbstractString, ref_structure_file::AbstractString, potential::AbstractPotential; out_file_name::AbstractString="optimized_structures.xyz")
     """
     Calls the overload of this function which does the optimization and writing
     but with the optimizations to be split into num_tasks different asynchronous tasks.
@@ -162,6 +162,7 @@ function optimize_directed_graph_guesses(tcode_file::AbstractString, ref_structu
 
     ranges = []
     # get the ranges over which each task will operate
+    num_tasks::Int = nworkers()
     for i in 1:num_tasks
         if i < num_tasks
             push!(ranges, (i-1) * (length(tcodes) ÷ num_tasks) + 1 : (i * (length(tcodes) ÷ num_tasks)))
