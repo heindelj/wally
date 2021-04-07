@@ -1,4 +1,4 @@
-using ProgressBars
+using Distributed
 
 include("../../molecule_tools/water_tools.jl")
 include("../../molecule_tools/read_xyz.jl")
@@ -58,13 +58,13 @@ function rotate_about_axis(v::AbstractVector, axis::AbstractVector, angle::T) wh
     return rot' * v
 end
 
-function dangling_hydrogen_from_centroid(vec_O::AbstractVector, centroid::AbstractVector; OH_distance::Float64 = 0.9572)
+function dangling_hydrogen_from_centroid(vec_O::AbstractVector, centroid::AbstractVector; free_OH_distance::Float64 = 0.95)
     line = vec_O - centroid
-    line = line * (norm(line) + OH_distance) / norm(line)
+    line = line * (norm(line) + free_OH_distance) / norm(line)
     return centroid + line
 end
 
-function structure_from_tcode(t_code::tcode, ref_coords::AbstractMatrix; OH_distance::Float64 = 0.96)
+function structure_from_tcode(t_code::tcode, ref_coords::AbstractMatrix; OH_distance::Float64 = 0.98, free_OH_distance::Float64 = 0.95)
     """
     Takes a tcode and set of reference coordinates for water molecules in OHH order.
     Returns a complete water cluster structure.
@@ -93,10 +93,10 @@ function structure_from_tcode(t_code::tcode, ref_coords::AbstractMatrix; OH_dist
 
     # place the free OH atoms (I slightly randomize so we don't get colinear vectors)
     for i_free_OH in remaining_indices
-        @views structure[:, i_free_OH] = dangling_hydrogen_from_centroid(structure[:, 3 * ((i_free_OH - 1) ÷ 3) + 1], vec(centroid(ref_coords))) + rand(3) * 0.0005
+        @views structure[:, i_free_OH] = dangling_hydrogen_from_centroid(structure[:, 3 * ((i_free_OH - 1) ÷ 3) + 1], vec(centroid(ref_coords)), free_OH_distance=free_OH_distance) + rand(3) * 0.0005
     end
 
-    # make all HOH angles 104.5 and distances 0.96
+    # make all HOH angles 104.5
     for i_Oxygen in 1:3:size(ref_coords)[2]
         @views OH_1 = structure[:,i_Oxygen + 1] -  structure[:,i_Oxygen]
         @views OH_2 = structure[:,i_Oxygen + 2] -  structure[:,i_Oxygen]
@@ -125,37 +125,24 @@ function structure_from_tcode(t_code::tcode, ref_coords::AbstractMatrix; OH_dist
     return structure
 end
 
-function structures_from_tcode(t_codes::AbstractArray{tcode, 1}, ref_coords::AbstractMatrix; OH_distance::Float64 = 0.96)
+function structures_from_tcode(t_codes::AbstractArray{tcode, 1}, ref_coords::AbstractMatrix; OH_distance::Float64 = 0.98, free_OH_distance::Float64 = 0.95)
     """
     Make many structures from the relevant tcodes and reference geometry.
     """
-    return structure_from_tcode.(t_codes, (ref_coords,), OH_distance=OH_distance)
+    return structure_from_tcode.(t_codes, (ref_coords,), OH_distance=OH_distance, free_OH_distance=free_OH_distance)
 end
 
-function optimize_directed_graph_guesses(guess_geoms::AbstractArray{Array{Float64, 2}, 1}, label::AbstractArray{Array{String, 1}}, potential::AbstractPotential; out_file_name::AbstractString="optimized_structures.xyz", write_every::Int=100)
+function optimize_directed_graph_guesses(guess_geoms::AbstractArray{Array{Float64, 2}, 1}, labels::AbstractArray{Array{String, 1}}, potential::AbstractPotential; out_file_name::AbstractString="optimized_structures.xyz", write_every::Int=100)
     """
     Optimize the actual guess structures and write the results to specified
     output file.
     """
-    for i in ProgressBar(1:(length(guess_geoms) ÷ write_every + 1))
-        if i < (length(guess_geoms) ÷ write_every + 1)
-            energies, opt_geoms = optimize_structures(@view(guess_geoms[((i-1) * write_every + 1):(i * write_every)]), potential)
-        else
-            energies, opt_geoms = optimize_structures(@view(guess_geoms[((i-1) * write_every + 1):length(guess_geoms)]), potential)
-        end
+    header::String = ""
+    for i in 1:length(guess_geoms)
+        energy, opt_geom = optimize_xyz(guess_geoms[i], potential, show_trace=false)
 
-        labels = []
-        headers = []
-        for j in 1:length(energies)
-            push!(labels, label[1])
-            push!(headers, string(size(opt_geoms[j], 2), "\n", energies[j]))
-        end
-
-        if i == 1
-            write_xyz(out_file_name, headers, labels, opt_geoms)
-        else
-            write_xyz(out_file_name, headers, labels, opt_geoms, append=true)
-        end
+        header = string(size(opt_geom, 2), "\n", energy)
+        write_xyz(out_file_name, [header], labels, [opt_geom], append=(i!=1))
     end
 end
 
@@ -165,12 +152,6 @@ function optimize_directed_graph_guesses(tcode_file::AbstractString, ref_structu
     but with the optimizations to be split into num_tasks different asynchronous tasks.
     The potential must be re-constructible from a version of itself to avoid lack of thread safety.
     """
-
-    if num_tasks == 1
-        num_tasks = 1
-    elseif num_tasks < Threads.nthreads()
-        num_tasks = Threads.nthreads()
-    end
 
     println("Reading in the tcodes and reference structure...")
     tcodes = load_tcode_file(tcode_file)
@@ -191,10 +172,14 @@ function optimize_directed_graph_guesses(tcode_file::AbstractString, ref_structu
 
     # launch each of the asynchronous tasks with the segments of data each
     # task operates on as well as a unique file name to write to.
-    @sync for (i, range) in enumerate(ranges)
-            outfile = string(splitext(out_file_name)[1], "_", "0"^(length(digits(num_tasks)) - length(digits(i))), i, splitext(out_file_name)[2])
-            optimize() = optimize_directed_graph_guesses(guess_geoms[range], label[:], typeof(potential)(potential), out_file_name=outfile)
-            # launch the optimization task
-            @async optimize()
+    println("Optimizing the guess structures...")
+    cwd::String = pwd()
+
+    @sync for (i, pid) in enumerate(workers())
+        outfile = string(cwd, "/", splitext(out_file_name)[1], "_", "0"^(length(digits(num_tasks)) - length(digits(i))), i, splitext(out_file_name)[2])
+        @spawnat pid optimize_directed_graph_guesses(guess_geoms[ranges[i]], 
+                                                     label[:], 
+                                                     typeof(potential)(potential), 
+                                                     out_file_name=outfile)
     end
 end
