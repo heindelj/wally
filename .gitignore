@@ -29,3 +29,6 @@ src/**/*.code-workspace
 src/*.xyz
 src/TTM_opt/optimized_structures_TTM21F.xyz
 srcoptimized_structures_1.xyz
+src/TTM_opt/**
+src/water_cluster_graphs/vendor/**
+src/water_cluster_graphs/src/data/**

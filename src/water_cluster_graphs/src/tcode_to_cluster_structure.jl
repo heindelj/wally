@@ -1,9 +1,11 @@
 using Distributed
+using GraphIO
 
 include("../../molecule_tools/water_tools.jl")
 include("../../molecule_tools/read_xyz.jl")
 include("../../molecule_tools/molecular_axes.jl") # centroid
 include("../../molecule_tools/optimize_xyz.jl")
+include("molecular_graph_utils.jl")
 using Base.Filesystem
 
 
@@ -32,6 +34,8 @@ function get_hbond_partners_from_tcode(tcode_array::tcode)
     """
     Takes a tcode and splits it into tuples which represent the donor and acceptor
     oxygen atoms, respectively.
+    Note that the first two numbers tell you how many edges and vertices there are,
+    which is not neccesary for connectivity.
     """
     @assert isinteger(length(tcode_array.indices) / 2) "tcode doesn't have even number of indices."
     pairs::Array{Tuple,1} = []
@@ -62,6 +66,49 @@ function dangling_hydrogen_from_centroid(vec_O::AbstractVector, centroid::Abstra
     line = vec_O - centroid
     line = line * (norm(line) + free_OH_distance) / norm(line)
     return centroid + line
+end
+
+function construct_dodecahedral_cage(desired_edge_distance::Float64)
+    """
+    Uses the analytic cartesian coordinates for a dodecahedron to create
+    the oxygen coordinates with desired edge lengths.
+    See wikipedia for coordinates: https://en.wikipedia.org/wiki/Regular_dodecahedron
+    """
+    ϕ = (1.0 + sqrt(5.0)) / 2.0
+    original_edge_length = sqrt(5.0) - 1.0
+    vertices::Array{Float64,2} = [[1,1,1] [1,1,-1] [1,-1,1] [-1,1,1] [1,-1,-1] [-1,1,-1] [-1,-1,1] [-1,-1,-1] [0,ϕ,1/ϕ] [0,ϕ,-1/ϕ] [0,-ϕ,1/ϕ] [0,-ϕ,-1/ϕ] [1/ϕ,0,ϕ] [1/ϕ,0,-ϕ] [-1/ϕ,0,ϕ] [-1/ϕ,0,-ϕ] [ϕ,1/ϕ,0] [ϕ,-1/ϕ,0] [-ϕ,1/ϕ,0] [-ϕ,-1/ϕ,0]]
+
+    return vertices * desired_edge_distance / original_edge_length
+end
+
+function get_g6(coords::AbstractMatrix, nn_distance::Float64)
+    adj_matrix = zeros((size(coords, 2), size(coords, 2)))
+    for i_col in 1:size(coords, 2)
+        for i_nn in 1:size(coords, 2)
+            if i_col != i_nn
+                if norm(coords[:, i_col] - coords[:, i_nn]) < nn_distance + 0.1
+                    adj_matrix[i_col, i_nn] = 1
+                end
+            end
+        end
+    end
+    g6_string = GraphIO.Graph6._graphToG6String(LightGraphs.SimpleGraph(adj_matrix))
+    return g6_string
+end
+
+function structure_from_tcode(t_code::tcode; OO_distance::Float64 = 2.65, OH_distance::Float64 = 0.98, free_OH_distance::Float64 = 0.95)
+    """
+    This is a special case for the (H2O)20 dodecahedral cage.
+
+    NOTE: This only works when the reference structure used to generate the 
+    t codes has the same atom ordering as ordering returned by construct_dodecahedral_cage
+    which is somewhat arbitrary. Consider yourself warned!
+    """
+    structure = zeros((3,60))
+    O_indices = collect(1:3:60)
+    structure[:, O_indices] = construct_dodecahedral_cage(OO_distance)
+
+    return structure_from_tcode(t_code, structure, OH_distance=OH_distance, free_OH_distance=free_OH_distance)
 end
 
 function structure_from_tcode(t_code::tcode, ref_coords::AbstractMatrix; OH_distance::Float64 = 0.98, free_OH_distance::Float64 = 0.95)
