@@ -179,25 +179,56 @@ function structures_from_tcode(t_codes::AbstractArray{tcode, 1}, ref_coords::Abs
     return structure_from_tcode.(t_codes, (ref_coords,), OH_distance=OH_distance, free_OH_distance=free_OH_distance)
 end
 
-function optimize_directed_graph_guesses(guess_geoms::AbstractArray{Array{Float64, 2}, 1}, labels::AbstractArray{Array{String, 1}}, potential::AbstractPotential; out_file_name::AbstractString="optimized_structures.xyz")
+function structures_from_tcode(t_codes::AbstractArray{tcode, 1}; OO_distance::Float64 = 2.65, OH_distance::Float64 = 0.98, free_OH_distance::Float64 = 0.95)
+    """
+    Specifically makes many of the generated dodecahedron geometries.
+    """
+    return structure_from_tcode.(t_codes, OO_distance=OO_distance, OH_distance=OH_distance, free_OH_distance=free_OH_distance)
+end
+
+function optimize_directed_graph_guesses(guess_geoms::AbstractArray{Array{Float64, 2}, 1}, labels::AbstractArray{Array{String, 1}}, potential::AbstractPotential; write_every::Union{Int,Nothing}=nothing, out_file_name::AbstractString=string(pwd(), "/optimized_structures.xyz"))
     """
     Optimize the actual guess structures and write the results to specified
     output file.
+    Write every will split the calculation into chunks and write results to a different file for each chunk.
+    Note that the parallelism is over these chunks, so they should be large enough that the processors have sufficient work.
     """
-    header::String = ""
-    for i in 1:length(guess_geoms)
-        energy, opt_geom = optimize_xyz(guess_geoms[i], potential, show_trace=false)
-
-        header = string(size(opt_geom, 2), "\n", energy)
-        write_xyz(out_file_name, [header], labels, [opt_geom], append=(i!=1))
+    if write_every === nothing
+        energies, opt_geoms = optimize_structures(guess_geoms, potential, copy_construct_potential=true)
+        
+        header::String = ""
+        for i in 1:length(energies)
+            header = string(size(opt_geoms[i], 2), "\n", energies[i])
+            write_xyz(out_file_name, [header], labels, [opt_geoms[i]], append=(i!=1))
+        end
+    else
+        ranges = []
+        # get the ranges over which we chunk the data
+        num_chunks::Int = (length(guess_geoms) ÷ write_every)
+        for i in 1:num_chunks
+            if i < num_chunks
+                push!(ranges, (i-1) * (length(guess_geoms) ÷ num_chunks) + 1 : (i * (length(guess_geoms) ÷ num_chunks)))
+            else
+                push!(ranges, (i-1) * (length(guess_geoms) ÷ num_chunks) + 1 : length(guess_geoms))
+            end
+        end
+        
+        header = ""
+        for i in 1:num_chunks
+            energies, opt_geoms = optimize_structures(guess_geoms[ranges[i]], potential, copy_construct_potential=true)
+            
+            outfile = string(splitext(out_file_name)[1], "_", "0"^(length(digits(num_chunks)) - length(digits(i))), i, splitext(out_file_name)[2])
+            for j in 1:length(energies)
+                header = string(size(opt_geoms[j], 2), "\n", energies[j])
+                write_xyz(outfile, [header], labels, [opt_geoms[j]], append=(j!=1))
+            end
+        end
     end
 end
 
-function optimize_directed_graph_guesses(tcode_file::AbstractString, ref_structure_file::AbstractString, potential::AbstractPotential; out_file_name::AbstractString="optimized_structures.xyz")
+function optimize_directed_graph_guesses(tcode_file::AbstractString, ref_structure_file::AbstractString, potential::AbstractPotential; out_file_name::AbstractString=string(pwd(), "/optimized_structures.xyz"), use_reference_for_guess=true)
     """
-    Calls the overload of this function which does the optimization and writing
-    but with the optimizations to be split into num_tasks different asynchronous tasks.
-    The potential must be re-constructible from a version of itself to avoid lack of thread safety.
+    convenience function for calling the overload of this function but takes to read in the relevant data.
     """
 
     println("Reading in the tcodes and reference structure...")
@@ -205,29 +236,16 @@ function optimize_directed_graph_guesses(tcode_file::AbstractString, ref_structu
     header, label, ref_geom = read_xyz(ref_structure_file)
 
     println("Forming the guess structures...")
-    guess_geoms = structures_from_tcode(tcodes, ref_geom[1])
-
-    ranges = []
-    # get the ranges over which each task will operate
-    num_tasks::Int = nworkers()
-    for i in 1:num_tasks
-        if i < num_tasks
-            push!(ranges, (i-1) * (length(tcodes) ÷ num_tasks) + 1 : (i * (length(tcodes) ÷ num_tasks)))
-        else
-            push!(ranges, (i-1) * (length(tcodes) ÷ num_tasks) + 1 : length(tcodes))
-        end
+    if use_reference_for_guess
+        guess_geoms = structures_from_tcode(tcodes, ref_geom[1])
+    else
+        guess_geoms = structures_from_tcode(tcodes)
     end
 
-    # launch each of the asynchronous tasks with the segments of data each
-    # task operates on as well as a unique file name to write to.
     println("Optimizing the guess structures...")
-    cwd::String = pwd()
+    optimize_directed_graph_guesses(guess_geoms, 
+                                    label, 
+                                    potential, 
+                                    out_file_name=out_file_name)
 
-    @sync for (i, pid) in enumerate(workers())
-        outfile = string(cwd, "/", splitext(out_file_name)[1], "_", "0"^(length(digits(num_tasks)) - length(digits(i))), i, splitext(out_file_name)[2])
-        @spawnat pid optimize_directed_graph_guesses(guess_geoms[ranges[i]], 
-                                                     label[:], 
-                                                     typeof(potential)(potential), 
-                                                     out_file_name=outfile)
-    end
 end
