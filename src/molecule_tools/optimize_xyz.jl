@@ -7,7 +7,7 @@ function optimize_xyz(geom::AbstractArray{Float64}, potential::AbstractPotential
     results = optimize(geom -> get_energy(potential, geom; kwargs...),
                     (grads, x) -> get_gradients!(potential, grads, x; kwargs...),
                            geom,
-                           LBFGS(linesearch=Optim.LineSearches.BackTracking()),
+                           LBFGS(linesearch=Optim.LineSearches.MoreThuente()),
                            Optim.Options(g_tol=g_tol,
                                          show_trace=show_trace,
                                          show_every=show_every,
