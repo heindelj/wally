@@ -13,15 +13,15 @@ mutable struct TTM <: AbstractPotential
     full_lib_path::String
     version::String
 
-    update_data::Bool
+    update_energy::Bool
+    update_gradients::Bool
     current_energy::Float64
     current_gradients::Union{Array{Float64, 1}, Array{Float64, 2}, HybridArray{Tuple{3,StaticArrays.Dynamic()},Float64,2,2,Array{Float64,2}}, Nothing}
 end
 
-TTM(full_lib_path::AbstractString) = TTM(dlsym(dlopen(full_lib_path), "ttm2f"), full_lib_path, "ttm2f", true, 0.0, nothing)
-TTM(full_lib_path::AbstractString, version::AbstractString) = TTM(dlsym(dlopen(full_lib_path), version), full_lib_path, version, true, 0.0, nothing)
-TTM() = TTM(dlsym(dlopen("/home/heindelj/Research/Sotiris/MBE_Dynamics/MBE_Dynamics_Home_Code/pyMD/bin/ttm_all.so"), "ttm2f"), 
-            "/home/heindelj/Research/Sotiris/MBE_Dynamics/MBE_Dynamics_Home_Code/pyMD/bin/ttm_all.so", "ttm2f", true, 0.0, nothing)
+TTM(full_lib_path::AbstractString, version::AbstractString) = TTM(dlsym(dlopen(full_lib_path), version), full_lib_path, version, true, true, 0.0, nothing)
+TTM(full_lib_path::AbstractString) = TTM(full_lib_path, "ttm2f")
+TTM() = TTM("/home/heindelj/Research/Sotiris/MBE_Dynamics/MBE_Dynamics_Home_Code/pyMD/bin/ttm_all.so")
 TTM(ttm::TTM) = TTM(ttm.full_lib_path, ttm.version)
 
 function get_energy_and_gradients(potential::TTM, coords::AbstractArray; sort_coords::Bool=true, reshape_coords::Bool=false)
@@ -48,29 +48,33 @@ function get_energy_and_gradients(potential::TTM, coords::AbstractArray; sort_co
 end
 
 function get_energy(potential::TTM, coords::AbstractArray; sort_coords::Bool=true, reshape_coords::Bool=false)
-    if potential.update_data
+    if potential.update_energy
         cwd = String(pwd())
         cd(dirname(potential.full_lib_path))
         potential.current_energy, potential.current_gradients = get_energy_and_gradients(potential, coords, sort_coords=sort_coords, reshape_coords=reshape_coords)
         cd(cwd)
-        potential.update_data = false
+        potential.update_energy = true
+        potential.update_gradients = false
         return potential.current_energy
     else
-        potential.update_data = true
+        potential.update_energy = true
+        potential.update_gradients = true
         return potential.current_energy
     end
 end
 
 function get_gradients(potential::TTM, coords::AbstractArray; sort_coords::Bool=true, reshape_coords::Bool=false)
-    if potential.update_data
+    if potential.update_gradients
         cwd = String(pwd())
         cd(dirname(potential.full_lib_path))
         potential.current_energy, potential.current_gradients = get_energy_and_gradients(potential, coords, sort_coords=sort_coords, reshape_coords=reshape_coords)
         cd(cwd)
-        potential.update_data = false
+        potential.update_gradients = true
+        potential.update_energy = false
         return potential.current_gradients
     else
-        potential.update_data = true
+        potential.update_energy = true
+        potential.update_gradients = true
         return potential.current_gradients
     end
 end
@@ -84,11 +88,12 @@ end
 mutable struct MBPol <: AbstractPotential
     potential_function::Ptr
     full_lib_path::String
-    update_data::Bool
+    update_energy::Bool
+    update_gradients::Bool
     current_energy::Float64
     current_gradients::Union{Array{Float64, 1}, Array{Float64, 2}}
 end
-MBPol(full_lib_path::AbstractString) = MBPol(dlsym(dlopen(full_lib_path), "calcpotg_"), full_lib_path, true, 0.0, zeros((0,0)))
+MBPol(full_lib_path::AbstractString) = MBPol(dlsym(dlopen(full_lib_path), "calcpotg_"), full_lib_path, true, true, 0.0, zeros((0,0)))
 MBPol(mbpol::MBPol) = MBPol(mbpol.full_lib_path)
 
 function get_energy_and_gradients(potential::MBPol, coords::AbstractArray; reshape_coords::Bool=false)
@@ -104,33 +109,37 @@ function get_energy_and_gradients(potential::MBPol, coords::AbstractArray; resha
     if reshape_coords
         grads = vec(grads)
     end
-    return energy[begin] / 627.5, grads / 627.5
+    return energy[begin] * conversion(:kcal, :hartree), grads * conversion(:kcal, :hartree)
 end
 
 function get_energy(potential::MBPol, coords::AbstractArray; reshape_coords::Bool=false)
-    if potential.update_data
+    if potential.update_energy
         cwd = String(pwd())
         cd(dirname(potential.full_lib_path))
         potential.current_energy, potential.current_gradients = get_energy_and_gradients(potential, coords, reshape_coords=reshape_coords)
         cd(cwd)
-        potential.update_data = false
+        potential.update_energy = true
+        potential.update_gradients = false
         return potential.current_energy
     else
-        potential.update_data = true
+        potential.update_energy = true
+        potential.update_gradients = true
         return potential.current_energy
     end
 end
 
 function get_gradients(potential::MBPol, coords::AbstractArray; reshape_coords::Bool=false)
-    if potential.update_data
+    if potential.update_gradients
         cwd = String(pwd())
         cd(dirname(potential.full_lib_path))
         potential.current_energy, potential.current_gradients = get_energy_and_gradients(potential, coords, reshape_coords=reshape_coords)
         cd(cwd)
-        potential.update_data = false
+        potential.update_energy = false
+        potential.update_gradients = true
         return potential.current_gradients
     else
-        potential.update_data = true
+        potential.update_energy = true
+        potential.update_gradients = true
         return potential.current_gradients
     end
 end
