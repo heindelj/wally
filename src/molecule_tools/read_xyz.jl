@@ -1,11 +1,17 @@
-function read_xyz(ifile::String; T::Type=Float64)
+using HybridArrays, StaticArrays
+
+function read_xyz(ifile::String; T::Type=Float64, static::Bool=false)
     """
     Reads in an xyz file of possibly multiple geometries, returning the header, atom labels, 
     and coordinates as arrays of strings and Float64s for the coordinates.
     """
     header = Array{String, 1}()
     atom_labels = Array{Array{String, 1}, 1}()
-    geoms = Array{Array{T, 2}, 1}()
+    if static
+        geoms = Array{HybridArray{Tuple{3,StaticArrays.Dynamic()}}, 1}()
+    else
+        geoms = Array{Array{T, 2}, 1}()
+    end
     open(ifile, "r") do io
         for line in eachline(io)
             if isa(tryparse(Int, line), Int)

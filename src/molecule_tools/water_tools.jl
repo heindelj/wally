@@ -119,9 +119,25 @@ function sort_water_molecules_to_oxygens_first(coords::AbstractMatrix)
     j::Int=1
     Nw::Int=div(size(coords, 2), 3)
     for i = 1:Nw
-        new_coords[:,i] = coords[:,(i-1)*3+1]
-        new_coords[:,Nw+j] = coords[:,(i-1)*3+2]
-        new_coords[:,Nw+j+1] = coords[:,(i-1)*3+3]
+        @inbounds @views new_coords[:,i] = coords[:,(i-1)*3+1]
+        @inbounds @views new_coords[:,Nw+j] = coords[:,(i-1)*3+2]
+        @inbounds @views new_coords[:,Nw+j+1] = coords[:,(i-1)*3+3]
+        j += 2
+    end
+    return new_coords
+end
+export sort_water_molecules_to_oxygens_first
+
+function sort_water_molecules_to_oxygens_first!(new_coords::AbstractMatrix, coords::AbstractMatrix)
+    """
+    Sorts waters in OHHOHH order to OOHHHH order.
+    """
+    j::Int=1
+    Nw::Int=div(size(coords, 2), 3)
+    for i = 1:Nw
+        @inbounds @views new_coords[:,i] = coords[:,(i-1)*3+1]
+        @inbounds @views new_coords[:,Nw+j] = coords[:,(i-1)*3+2]
+        @inbounds @views new_coords[:,Nw+j+1] = coords[:,(i-1)*3+3]
         j += 2
     end
     return new_coords
@@ -136,9 +152,9 @@ function sort_oxygens_first_to_water_molecules(coords::AbstractMatrix)
     j::Int=1
     Nw::Int=div(size(coords, 2), 3)
     for i = 1:Nw
-        new_coords[:,(i-1)*3+1] = coords[:,i]
-        new_coords[:,(i-1)*3+2] = coords[:,Nw+j]
-        new_coords[:,(i-1)*3+3] = coords[:,Nw+j+1]
+        @inbounds @views new_coords[:,(i-1)*3+1] = coords[:,i]
+        @inbounds @views new_coords[:,(i-1)*3+2] = coords[:,Nw+j]
+        @inbounds @views new_coords[:,(i-1)*3+3] = coords[:,Nw+j+1]
         j += 2
     end
     return new_coords

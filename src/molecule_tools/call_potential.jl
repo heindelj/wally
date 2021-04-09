@@ -1,5 +1,6 @@
 include("water_tools.jl")
 include("units.jl")
+include("read_xyz.jl")
 
 using Libdl
 using Base.Filesystem
@@ -10,17 +11,17 @@ abstract type AbstractPotential end
 mutable struct TTM <: AbstractPotential
     potential_function::Ptr
     full_lib_path::String
-    version::AbstractString
+    version::String
 
     update_data::Bool
     current_energy::Float64
-    current_gradients::Union{Array{Float64, 1}, Array{Float64, 2}}
+    current_gradients::Union{Array{Float64, 1}, Array{Float64, 2}, HybridArray{Tuple{3,StaticArrays.Dynamic()},Float64,2,2,Array{Float64,2}}, Nothing}
 end
 
-TTM(full_lib_path::AbstractString) = TTM(dlsym(dlopen(full_lib_path), "ttm2f"), full_lib_path, "ttm2f", true, 0.0, zeros((0,0)))
-TTM(full_lib_path::AbstractString, version::AbstractString) = TTM(dlsym(dlopen(full_lib_path), version), full_lib_path, version, true, 0.0, zeros((0,0)))
+TTM(full_lib_path::AbstractString) = TTM(dlsym(dlopen(full_lib_path), "ttm2f"), full_lib_path, "ttm2f", true, 0.0, nothing)
+TTM(full_lib_path::AbstractString, version::AbstractString) = TTM(dlsym(dlopen(full_lib_path), version), full_lib_path, version, true, 0.0, nothing)
 TTM() = TTM(dlsym(dlopen("/home/heindelj/Research/Sotiris/MBE_Dynamics/MBE_Dynamics_Home_Code/pyMD/bin/ttm_all.so"), "ttm2f"), 
-            "/home/heindelj/Research/Sotiris/MBE_Dynamics/MBE_Dynamics_Home_Code/pyMD/bin/ttm_all.so", "ttm2f", true, 0.0, zeros((0,0)))
+            "/home/heindelj/Research/Sotiris/MBE_Dynamics/MBE_Dynamics_Home_Code/pyMD/bin/ttm_all.so", "ttm2f", true, 0.0, nothing)
 TTM(ttm::TTM) = TTM(ttm.full_lib_path, ttm.version)
 
 function get_energy_and_gradients(potential::TTM, coords::AbstractArray; sort_coords::Bool=true, reshape_coords::Bool=false)
@@ -31,7 +32,8 @@ function get_energy_and_gradients(potential::TTM, coords::AbstractArray; sort_co
     grads = zero(coords)
     energy = Float64[0]
     if sort_coords
-        new_coords = sort_water_molecules_to_oxygens_first(coords)
+        new_coords = zero(coords)
+        sort_water_molecules_to_oxygens_first!(new_coords, coords)
         ccall(potential.potential_function, Cvoid, (Ref{Int32}, Ref{Float64}, Ref{Float64}, Ref{Float64}), num_waters, new_coords, grads, energy)
     else
         ccall(potential.potential_function, Cvoid, (Ref{Int32}, Ref{Float64}, Ref{Float64}, Ref{Float64}), num_waters, coords, grads, energy)
