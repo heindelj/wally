@@ -2,7 +2,7 @@ include("read_xyz.jl")
 include("call_potential.jl")
 using Optim
 
-function optimize_xyz(geom::AbstractArray{Float64}, potential::AbstractPotential; g_tol=0.0001, iterations=2500, show_every=25, show_trace::Bool=true, kwargs...)
+function optimize_xyz(geom::AbstractVecOrMat{<:AbstractFloat}, potential::AbstractPotential; g_tol=0.0001, iterations=2500, show_every=25, show_trace::Bool=true, kwargs...)
     shape = size(geom)
     results = optimize(geom -> get_energy(potential, geom; kwargs...),
                     (grads, x) -> get_gradients!(potential, grads, x; kwargs...),

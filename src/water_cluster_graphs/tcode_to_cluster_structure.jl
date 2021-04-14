@@ -1,10 +1,10 @@
 using Distributed
 using GraphIO
 
-include("../../molecule_tools/water_tools.jl")
-include("../../molecule_tools/read_xyz.jl")
-include("../../molecule_tools/molecular_axes.jl") # centroid
-include("../../molecule_tools/optimize_xyz.jl")
+include("../molecule_tools/water_tools.jl")
+include("../molecule_tools/read_xyz.jl")
+include("../molecule_tools/molecular_axes.jl") # centroid
+include("../molecule_tools/optimize_xyz.jl")
 include("molecular_graph_utils.jl")
 using Base.Filesystem
 

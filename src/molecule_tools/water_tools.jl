@@ -105,10 +105,24 @@ function sort_waters(coords::AbstractMatrix, labels::AbstractVector; to_angstrom
     return coords[:, sorted_indices]
 end
 
-function sort_waters(coords::AbstractArray{AbstractMatrix, 1}, labels::AbstractArray{AbstractVector, 1}; to_angstrom::Bool = false)
+function sort_waters!(coords::AbstractArray{AbstractMatrix, 1}, labels::AbstractArray{AbstractVector, 1}; to_angstrom::Bool = false)
     Threads.@threads for (i, coord) in enumerate(coords)
         coords[i] = sort_waters(coord, labels[i], to_angstrom=to_angstrom)
     end
+end
+
+function get_array_of_waters(coords::AbstractMatrix, labels::AbstractVector; to_angstrom::Bool = false)
+    """
+    Returns an array of arrays where each element is 3x3 array containing a water molecule.
+    """
+    @assert isinteger(size(coords, 2) / 3) "Number of atoms not divisble by 3. Is this water?"
+    new_coords = Array{typeof(coords), 1}(undef, size(coords, 2) ÷ 3)
+    coords = sort_waters(coords, labels, to_angstrom=to_angstrom)
+
+    for i in 1:(size(coords, 2) ÷ 3)
+        new_coords[i] = coords[:, ((i-1)*3 + 1):(i*3)]
+    end
+    return new_coords
 end
 
 function sort_water_molecules_to_oxygens_first(coords::AbstractMatrix)
