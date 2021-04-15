@@ -23,14 +23,22 @@ function optimize_structures(structures::AbstractArray{Array{Float64,2}, 1}, pot
     copy_construct_potential provides the option to copy construct the AbstractPotential as typeof(potential)(potential).
     This allows the use of potentials which are not thread safe, as is often the case with potentials written in fortran by scientists.
     """
-    future_results = Array{Future, 1}(undef, length(structures))
-    @sync for i in 1:length(structures)
-        if copy_construct_potential
-            future_results[i] = @spawnat :any optimize_xyz(structures[i], typeof(potential)(potential), show_trace=show_trace; kwargs...)
-        else
-            future_results[i] = @spawnat :any optimize_xyz(structures[i], potential, show_trace=show_trace; kwargs...)
-        end
+    #future_results = Array{Future, 1}(undef, length(structures))
+    #@sync for i in 1:length(structures)
+    #    if copy_construct_potential
+    #        future_results[i] = @spawnat :any optimize_xyz(structures[i], typeof(potential)(potential), show_trace=show_trace; kwargs...)
+    #    else
+    #        future_results[i] = @spawnat :any optimize_xyz(structures[i], potential, show_trace=show_trace; kwargs...)
+    #    end
+    #end
+
+    # TEST THIS!!!!!
+    if copy_construct_potential
+        results = pmap(x -> optimize_xyz(x, typeof(potential)(potential), show_trace=show_trace; kwargs...), structures)
+    else
+        results = pmap(x -> optimize_xyz(x, potential, show_trace=show_trace; kwargs...), structures)
     end
-    energies, geoms = collect(zip(fetch.(future_results)...))
+
+    energies, geoms = collect(zip(fetch.(results)...))
     return [energies...], [geoms...]
 end
