@@ -23,7 +23,7 @@ function get_many_body_geometries(coords::AbstractArray, order::Int)
     return subsystem_combos
 end
 
-function get_total_from_subsystem_sums(data::AbstractArray, num_fragments::Int)
+function get_mbe_data_from_subsystem_sums(data::AbstractArray, num_fragments::Int)
     """
     Takes the sums over some property (probably energies or forces)
     and applies the appropriate weights to each term, returning the final value.
@@ -35,7 +35,7 @@ function get_total_from_subsystem_sums(data::AbstractArray, num_fragments::Int)
             mbe_data[i_mbe+1] += (-1)^i * binomial(num_fragments-(i_mbe+1)+i, i) * data[i_mbe-i+1]
         end
     end
-    return sum(mbe_data)
+    return mbe_data
 end
 
 function force_indices(mbe_order::Int, fragments::AbstractArray)
@@ -65,7 +65,7 @@ function force_indices(mbe_order::Int, fragments::AbstractArray)
     return atom_index_array
 end
 
-function get_energy(mbe_potential::MBEPotential, coords::AbstractArray; copy_construct_potential=false, kwargs...)
+function get_energy(mbe_potential::MBEPotential, coords::AbstractArray{Array{Float64, 1}}; return_mbe_data=false, copy_construct_potential=false, kwargs...)
     """
     Forms the n-body geometries and calls the potential belonging to
     mbe_potential on each of them to return the many-body energy.
@@ -89,10 +89,15 @@ function get_energy(mbe_potential::MBEPotential, coords::AbstractArray; copy_con
         end
     end
 
-    return get_total_from_subsystem_sums(energies, length(coords))
+    mbe_data::Array{Float64, 1} = get_mbe_data_from_subsystem_sums(energies, length(coords))
+    if return_mbe_data
+        return mbe_data
+    else
+        return sum(mbe_data)
+    end
 end
 
-function get_gradients(mbe_potential::MBEPotential, coords::AbstractArray; copy_construct_potential=false, kwargs...)
+function get_gradients(mbe_potential::MBEPotential, coords::AbstractArray; return_mbe_data=false, copy_construct_potential=false, kwargs...)
     """
     Forms the n-body geometries and calls the potential belonging to
     mbe_potential on each of them to return the many-body gradients.
@@ -124,7 +129,13 @@ function get_gradients(mbe_potential::MBEPotential, coords::AbstractArray; copy_
         end
     end
 
-    return get_total_from_subsystem_sums(summed_gradients, length(coords))
+    mbe_data = get_mbe_data_from_subsystem_sums(summed_gradients, length(coords))
+    
+    if return_mbe_data
+        return mbe_data
+    else
+        return sum(mbe_data)
+    end
 end
 
 function get_gradients!(potential::MBEPotential, storage::AbstractArray, coords::AbstractArray; copy_construct_potential::Bool=false, kwargs...)
