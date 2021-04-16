@@ -65,7 +65,7 @@ function force_indices(mbe_order::Int, fragments::AbstractArray)
     return atom_index_array
 end
 
-function get_energy(mbe_potential::MBEPotential, coords::AbstractArray{Array{Float64, 1}}; return_mbe_data=false, copy_construct_potential=false, kwargs...)
+function get_energy(mbe_potential::MBEPotential, coords::AbstractVector{Matrix{T}}, return_mbe_data::Bool=false, copy_construct_potential::Bool=false; kwargs...) where T <: Real
     """
     Forms the n-body geometries and calls the potential belonging to
     mbe_potential on each of them to return the many-body energy.
@@ -97,7 +97,7 @@ function get_energy(mbe_potential::MBEPotential, coords::AbstractArray{Array{Flo
     end
 end
 
-function get_gradients(mbe_potential::MBEPotential, coords::AbstractArray; return_mbe_data=false, copy_construct_potential=false, kwargs...)
+function get_gradients(mbe_potential::MBEPotential, coords::AbstractVector{Matrix{T}}, return_mbe_data=false, copy_construct_potential=false; kwargs...) where T <: Real
     """
     Forms the n-body geometries and calls the potential belonging to
     mbe_potential on each of them to return the many-body gradients.
@@ -138,6 +138,6 @@ function get_gradients(mbe_potential::MBEPotential, coords::AbstractArray; retur
     end
 end
 
-function get_gradients!(potential::MBEPotential, storage::AbstractArray, coords::AbstractArray; copy_construct_potential::Bool=false, kwargs...)
-    storage[:] = get_gradients(potential, coords, copy_construct_potential=copy_construct_potential; kwargs...)
+function get_gradients!(potential::MBEPotential, storage::AbstractArray, coords::AbstractVector{Matrix{T}}, copy_construct_potential::Bool=false; kwargs...) where T <: Real
+    storage[:] = get_gradients(potential, coords, false, copy_construct_potential; kwargs...)
 end
