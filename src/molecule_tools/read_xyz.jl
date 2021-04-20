@@ -1,10 +1,16 @@
 using HybridArrays, StaticArrays
 
-function read_xyz(ifile::String; T::Type=Float64, static::Bool=false)
+function read_xyz(ifile::String; T::Type=Float64, static::Bool=false, up_to_N::Int=0)
     """
     Reads in an xyz file of possibly multiple geometries, returning the header, atom labels, 
     and coordinates as arrays of strings and Float64s for the coordinates.
+    If up_to_N is specified (greater than zero), only the first N geometries will be read.
+    Otherwise, all geoms will be read.
     """
+    if up_to_N == 0
+        up_to_N = Integer(maxintfloat(Float64)) # a large number
+    end
+
     header = Array{String, 1}()
     atom_labels = Array{Array{String, 1}, 1}()
     if static
@@ -38,6 +44,9 @@ function read_xyz(ifile::String; T::Type=Float64, static::Bool=false)
                 end
                 push!(geoms, geom)
                 push!(atom_labels, labels)
+            end
+            if length(header) == up_to_N
+                break
             end
         end
     end

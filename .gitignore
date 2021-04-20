@@ -33,3 +33,4 @@ src/TTM_opt/**
 src/water_cluster_graphs/vendor/**
 src/water_cluster_graphs/src/data/**
 src/job_system/jobs.jl
+src/graph_cluster_data.dat

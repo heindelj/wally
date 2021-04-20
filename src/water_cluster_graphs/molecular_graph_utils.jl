@@ -1,5 +1,6 @@
 include("../molecule_tools/water_tools.jl")
 include("../molecule_tools/read_xyz.jl")
+include("count_rings.jl")
 using LightGraphs
 using ProgressBars
 
@@ -50,7 +51,7 @@ function split_clusters_into_families(water_cluster_geoms::Array{Array{T, 2}, 1}
     and do an isomorphism check with known families. If there's no match this cluster 
     begins a new family. Only the indices are stored to avoid copying the geometries.
     """
-    indices_into_families::Array{Array{Int}} = [[1]] # there will always be one family
+    indices_into_families::Vector{Vector{Int}} = [[1]] # there will always be one family
     println("Forming molecular graphs...")
     graphs = form_molecular_graph(water_cluster_geoms)
     println("Breaking graphs into families based on isomorphism...")
