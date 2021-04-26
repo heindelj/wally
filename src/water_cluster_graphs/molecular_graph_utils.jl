@@ -4,45 +4,67 @@ include("count_rings.jl")
 using LightGraphs
 using ProgressBars
 
-function adjacency_matrix(water_cluster_geom::Array{T, 2}) where T <: AbstractFloat
+function adjacency_matrix(water_cluster_geom::Array{T, 2}; simple_graph::Bool=true) where T <: AbstractFloat
     """
     Computes the adjacency matrix of a water cluster geometry based on the r_psi_hbond criterion.
     Expects the molecules in OHH order.
+    If simple_graph is set to false, the adjacency matrix will not be symmetrized,
+    and hence should be used to make a digraph rather than a simple graph.
     """
     adj_matrix = zeros(Int, size(water_cluster_geom, 2) ÷ 3, size(water_cluster_geom, 2) ÷ 3)
     hbonds = r_psi_hydrogen_bonds(water_cluster_geom)
     for (h_donor_idx, o_acceptor_idx) in hbonds
         adj_matrix[(h_donor_idx - 1) ÷ 3 + 1, o_acceptor_idx ÷ 3 + 1] = 1
     end
-    adj_matrix += adj_matrix'
+    if simple_graph
+        adj_matrix += adj_matrix'
+    end
     return adj_matrix
 end
 
-function adjacency_matrix(water_cluster_geoms::Array{Array{T, 2}, 1}) where T <: AbstractFloat
+function adjacency_matrix(water_cluster_geoms::Array{Array{T, 2}, 1};  simple_graph::Bool=true) where T <: AbstractFloat
     """
     Computes the adjacency matrices of many water cluster geometries based on the r_psi_hbond criterion.
     Expects the molecules in OHH order.
     """
-    adj_matrices = []
-    for geom in water_cluster_geoms
-        push!(adj_matrices, adjacency_matrix(geom))
+    adj_matrices::Vector{Matrix{Int}} = [zeros(Int, size(water_cluster_geoms[i], 2) ÷ 3, size(water_cluster_geoms[i], 2) ÷ 3) for i in 1:length(water_cluster_geoms)]
+    for i in 1:length(water_cluster_geoms)
+        adj_matrices[i] = adjacency_matrix(water_cluster_geoms[i], simple_graph=simple_graph)
     end
     return adj_matrices
 end
 
-function form_molecular_graph(water_cluster_geom::Array{T, 2}) where T <: AbstractFloat
+### SIMPLE GRAPHS ###
+function form_simple_molecular_graph(water_cluster_geom::Array{T, 2}) where T <: AbstractFloat
     """
     Makes LightGraph out of a molecular structure by computing the structures adjacency matrix.
     """
     return LightGraphs.SimpleGraph(adjacency_matrix(water_cluster_geom))
 end
 
-function form_molecular_graph(water_cluster_geoms::Array{Array{T, 2}, 1}) where T <: AbstractFloat
+function form_simple_molecular_graph(water_cluster_geoms::Array{Array{T, 2}, 1}) where T <: AbstractFloat
     """
     Makes LightGraph out of a molecular structure by computing the structures adjacency matrix.
     """
     return LightGraphs.SimpleGraph.(adjacency_matrix(water_cluster_geoms))
 end
+#######
+
+### DIRECTED GRAPHS ###
+function form_directed_molecular_graph(water_cluster_geom::Array{T, 2}) where T <: AbstractFloat
+    """
+    Makes LightGraph out of a molecular structure by computing the structures adjacency matrix.
+    """
+    return LightGraphs.SimpleDiGraph(adjacency_matrix(water_cluster_geom, simple_graph=false))
+end
+
+function form_directed_molecular_graph(water_cluster_geoms::Array{Array{T, 2}, 1}) where T <: AbstractFloat
+    """
+    Makes LightGraph out of a molecular structure by computing the structures adjacency matrix.
+    """
+    return LightGraphs.SimpleDiGraph.(adjacency_matrix(water_cluster_geoms, simple_graph=false))
+end
+######
 
 function split_clusters_into_families(water_cluster_geoms::Array{Array{T, 2}, 1}) where T <: AbstractFloat
     """
@@ -53,22 +75,24 @@ function split_clusters_into_families(water_cluster_geoms::Array{Array{T, 2}, 1}
     """
     indices_into_families::Vector{Vector{Int}} = [[1]] # there will always be one family
     println("Forming molecular graphs...")
-    graphs = form_molecular_graph(water_cluster_geoms)
+    graphs = form_simple_molecular_graph(water_cluster_geoms)
     println("Breaking graphs into families based on isomorphism...")
-    for i in ProgressBar(2:length(graphs))
-        has_matched::Bool = false
-        for families in indices_into_families
-            if !has_matched
-                if LightGraphs.Experimental.has_isomorph(graphs[i], graphs[families[begin]])
-                    push!(families, i)
-                    has_matched = true
-                    break
+    if length(graphs) > 1
+        for i in ProgressBar(2:length(graphs))
+            has_matched::Bool = false
+            for families in indices_into_families
+                if !has_matched
+                    if LightGraphs.Experimental.has_isomorph(graphs[i], graphs[families[begin]])
+                        push!(families, i)
+                        has_matched = true
+                        break
+                    end
                 end
             end
-        end
-        # if you haven't matched, then this is a new family
-        if !has_matched
-            push!(indices_into_families, [i])
+            # if you haven't matched, then this is a new family
+            if !has_matched
+                push!(indices_into_families, [i])
+            end
         end
     end
     return indices_into_families
@@ -100,4 +124,70 @@ function write_cluster_families(header::Array{String,1}, labels::Array{Array{Str
         family_geoms = view(geoms, family_indices)
         write_xyz(ofile, family_headers, family_labels, family_geoms, directory=output_directory)
     end
+end
+
+function label_water_type(G::LightGraphs.SimpleDiGraph)
+    """
+    Takes a directed graph and determines the code for each node in the graph, e.g. AAD, ADD, etc.
+    Stores the results in a dictionary indexed by the symbol :AAD, :ADD, etc.
+    """
+    labels = Dict{Symbol, Vector{Int}}()
+
+    # Below is: (n_acceptor, n_donated) => label
+    label_keys = ImmutableDict{Tuple{Int, Int}, Symbol}( 
+                                                (0,0) => :None,
+                                                (0,1) => :D, 
+                                                (1,0) => :A,
+                                                (0,2) => :DD,
+                                                (2,0) => :AA,
+                                                (1,1) => :AD,
+                                                (2,1) => :AAD,
+                                                (1,2) => :ADD,
+                                                (2,2) => :AADD,
+                                                (3,1) => :AAAD,
+                                                (3,0) => :AAA,
+                                                (3,2) => :AAADD,
+                                                (4,1) => :AAAAD,
+                                                (4,2) => :AAAADD)
+
+    for i in vertices(G)
+        n_accept::Int = length(inneighbors(G, i))
+        n_donate::Int = length(outneighbors(G, i))
+        label = label_keys[(n_accept, n_donate)]
+        if label in keys(labels)
+            push!(labels[label], i)
+        else
+            labels[label] = [i]
+        end
+    end
+    return labels
+end
+
+function get_count_of_each_water_label(labels::Dict{Symbol, Vector{Int}})
+    label_counts = Dict{Symbol, Int}(   :None => 0,
+                                        :D => 0,
+                                        :A => 0,
+                                        :DD => 0,
+                                        :AA => 0,
+                                        :AD => 0,
+                                        :AAD => 0,
+                                        :ADD => 0,
+                                        :AADD => 0,
+                                        :AAAD => 0,
+                                        :AAA => 0,
+                                        :AAADD => 0,
+                                        :AAAAD => 0,
+                                        :AAAADD => 0)
+    for key in keys(labels)
+        label_counts[key] = length(labels[key])
+    end
+    return label_counts
+end
+
+function possible_water_labels()
+    """
+    This is just to get a consistent ordering of the labels for writing to a file.
+    These labels are the h-bonding arrangement of a water molecule.
+    """
+    return Vector{Symbol}([:None, :D, :A, :DD, :AA, :AD, :AAD, :ADD, :AADD, :AAAD, :AAA, :AAADD, :AAAAD, :AAAADD])
 end

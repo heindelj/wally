@@ -53,10 +53,5 @@ function count_rings(G::LightGraphs.SimpleGraph{Int}, ring_sizes::UnitRange{Int}
 end
 
 function count_rings(graphs::AbstractVector{LightGraphs.SimpleGraph{Int}}, ring_sizes::UnitRange{Int})
-    counts::Vector{StaticArrays.MVector{length(ring_sizes), Int}} = [@MVector zeros(Int, length(ring_sizes)) for i in 1:length(graphs)]
-
-    Threads.@threads for i in ProgressBar(1:length(graphs))
-        counts[i] = count_rings(graphs[i], ring_sizes)
-    end
-    return counts
+    return pmap(x -> count_rings(x, ring_sizes), graphs)
 end

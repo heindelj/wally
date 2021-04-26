@@ -105,9 +105,9 @@ function sort_waters(coords::AbstractMatrix, labels::AbstractVector; to_angstrom
     return coords[:, sorted_indices]
 end
 
-function sort_waters!(coords::AbstractArray{AbstractMatrix, 1}, labels::AbstractArray{AbstractVector, 1}; to_angstrom::Bool = false)
-    Threads.@threads for (i, coord) in enumerate(coords)
-        coords[i] = sort_waters(coord, labels[i], to_angstrom=to_angstrom)
+function sort_waters!(coords::AbstractArray{Matrix{T}, 1}, labels::AbstractVector{Vector{String}}; to_angstrom::Bool = false) where T <: Real
+    Threads.@threads for i in 1:length(coords)
+        coords[i] = sort_waters(coords[i], labels[i], to_angstrom=to_angstrom)
     end
 end
 
