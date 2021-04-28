@@ -134,7 +134,7 @@ function label_water_type(G::LightGraphs.SimpleDiGraph)
     labels = Dict{Symbol, Vector{Int}}()
 
     # Below is: (n_acceptor, n_donated) => label
-    label_keys = ImmutableDict{Tuple{Int, Int}, Symbol}( 
+    label_keys = Dict{Tuple{Int, Int}, Symbol}( 
                                                 (0,0) => :None,
                                                 (0,1) => :D, 
                                                 (1,0) => :A,
