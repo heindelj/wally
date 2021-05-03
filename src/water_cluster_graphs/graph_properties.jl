@@ -160,6 +160,72 @@ function get_swb_labels(geom::Matrix{T}, labels::AbstractVector) where T <: Real
     return swb_labels
 end
 
+function label_water_type(G::LightGraphs.SimpleDiGraph)
+    """
+    Takes a directed graph and determines the code for each node in the graph, e.g. AAD, ADD, etc.
+    Stores the results in a dictionary indexed by the symbol :AAD, :ADD, etc.
+    """
+    labels = Dict{Symbol, Vector{Int}}()
+
+    # Below is: (n_acceptor, n_donated) => label
+    label_keys = Dict{Tuple{Int, Int}, Symbol}( 
+                                                (0,0) => :None,
+                                                (0,1) => :D, 
+                                                (1,0) => :A,
+                                                (0,2) => :DD,
+                                                (2,0) => :AA,
+                                                (1,1) => :AD,
+                                                (2,1) => :AAD,
+                                                (1,2) => :ADD,
+                                                (2,2) => :AADD,
+                                                (3,1) => :AAAD,
+                                                (3,0) => :AAA,
+                                                (3,2) => :AAADD,
+                                                (4,1) => :AAAAD,
+                                                (4,2) => :AAAADD)
+
+    for i in vertices(G)
+        n_accept::Int = length(inneighbors(G, i))
+        n_donate::Int = length(outneighbors(G, i))
+        label = label_keys[(n_accept, n_donate)]
+        if label in keys(labels)
+            push!(labels[label], i)
+        else
+            labels[label] = [i]
+        end
+    end
+    return labels
+end
+
+function get_count_of_each_water_label(labels::Dict{Symbol, Vector{Int}})
+    label_counts = Dict{Symbol, Int}(   :None => 0,
+                                        :D => 0,
+                                        :A => 0,
+                                        :DD => 0,
+                                        :AA => 0,
+                                        :AD => 0,
+                                        :AAD => 0,
+                                        :ADD => 0,
+                                        :AADD => 0,
+                                        :AAAD => 0,
+                                        :AAA => 0,
+                                        :AAADD => 0,
+                                        :AAAAD => 0,
+                                        :AAAADD => 0)
+    for key in keys(labels)
+        label_counts[key] = length(labels[key])
+    end
+    return label_counts
+end
+
+function possible_water_labels()
+    """
+    This is just to get a consistent ordering of the labels for writing to a file.
+    These labels are the h-bonding arrangement of a water molecule.
+    """
+    return Vector{Symbol}([:None, :D, :A, :DD, :AA, :AD, :AAD, :ADD, :AADD, :AAAD, :AAA, :AAADD, :AAAAD, :AAAADD])
+end
+
 function count_hydrogen_bonds(G::SimpleDiGraph{Int})
     return sum(outdegree.((G,), vertices(G)))
 end

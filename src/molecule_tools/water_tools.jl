@@ -1,5 +1,15 @@
 using LinearAlgebra
 include("units.jl")
+include("atomic_masses.jl")
+include("AbstractMolecule.jl")
+
+mutable struct WaterCluster{T} <: AbstractMolecule
+    coords::Matrix{T}
+    masses::Vector{T}
+end
+
+WaterCluster(coords::AbstractMatrix) = WaterCluster(sort_waters(coords), atomic_masses(repeat(["O", "H", "H"], size(coords, 2) ÷ 3)))
+WaterCluster(coords::AbstractMatrix, labels::AbstractVector{String}) = WaterCluster(sort_waters(coords, labels), atomic_masses(repeat(["O", "H", "H"], size(coords, 2) ÷ 3)))
 
 function r_psi_hydrogen_bonds(coords::AbstractMatrix)
     """
@@ -25,7 +35,6 @@ function r_psi_hydrogen_bonds(coords::AbstractMatrix)
     end
     return hbonds
 end
-export r_psi_hydrogen_bonds
 
 function is_a_hydrogen_bond(hydrogen_index::Int, oxygen_index::Int, coords::AbstractMatrix)
     """
@@ -62,6 +71,53 @@ function number_of_hydrogen_bonds(coords::Array{Array{Float64, 2}, 1})
         number_of_hydrogen_bonds_in_each_frame[i] = number_of_hydrogen_bonds(coord)
     end
     return number_of_hydrogen_bonds_in_each_frame
+end
+
+function sort_waters(coords::AbstractMatrix; to_angstrom::Bool = false)
+    """
+    Sorts waters based on distance criteria into OHH order.
+    """
+    @assert isinteger(size(coords, 2) / 3) "Number of atoms not divisible by 3. Can't be only waters."
+    distance_condition::Float64 = 1.4 # ansgtroms
+    if to_angstrom
+        distance_condition *= conversion(:angstrom, :bohr)
+    end
+
+    sorted_indices = zeros(Int, size(coords, 2))
+    current_index = 1
+
+    water_indices::Vector{Int} = [0, 0, 0]
+    pairs::Vector{Vector{Tuple{Int, Int}}} = [[(1,2), (1,3)], [(2,1), (2,3)], [(3,1), (3,2)]]
+    for i in 1:size(coords, 2)
+        if !(i in sorted_indices)
+            water_indices[1] = i
+            count::Int = 2
+                for j in 1:size(coords, 2)
+                    @inbounds if norm(@view(coords[:,i]) - @view(coords[:,j])) < distance_condition && norm(@view(coords[:,i]) - @view(coords[:,j])) > 0.0001
+                        water_indices[count] = j
+                        count += 1
+                    end
+                end
+
+            if count == 4 # otherwise we started with a hydrogen
+                for pair in pairs
+                    # this is an indexing abomination
+                    @inbounds @views OH1 = coords[:, water_indices[pair[1][1]]] - coords[:, water_indices[pair[1][2]]]
+                    @inbounds @views OH2 = coords[:, water_indices[pair[2][1]]] - coords[:, water_indices[pair[2][2]]]
+                    angle = acosd(dot(OH1, OH2) / (norm(OH1) * norm(OH2)))
+                    if angle > 75.0 && angle < 135.0
+                        sorted_indices[current_index] = water_indices[pair[1][1]]
+                        sorted_indices[current_index+1] = water_indices[pair[1][2]]
+                        sorted_indices[current_index+2] = water_indices[pair[2][2]]
+                        current_index += 3
+                    end
+                end
+            end
+            
+        end
+    end
+    @assert length(sorted_indices) == size(coords, 2) "Didn't associate every atom to a molecule. Check your units (should be in angstroms) or try providing atom labels."
+    return coords[:, sorted_indices]
 end
 
 function sort_waters(coords::AbstractMatrix, labels::AbstractVector; to_angstrom::Bool = false)
@@ -140,7 +196,6 @@ function sort_water_molecules_to_oxygens_first(coords::AbstractMatrix)
     end
     return new_coords
 end
-export sort_water_molecules_to_oxygens_first
 
 function sort_water_molecules_to_oxygens_first!(new_coords::AbstractMatrix, coords::AbstractMatrix)
     """
@@ -156,7 +211,6 @@ function sort_water_molecules_to_oxygens_first!(new_coords::AbstractMatrix, coor
     end
     return new_coords
 end
-export sort_water_molecules_to_oxygens_first
 
 function sort_oxygens_first_to_water_molecules(coords::AbstractMatrix)
     """
@@ -173,4 +227,3 @@ function sort_oxygens_first_to_water_molecules(coords::AbstractMatrix)
     end
     return new_coords
 end
-export sort_oxygens_first_to_water_molecules

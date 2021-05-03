@@ -7,6 +7,10 @@ function center_of_mass(geom::AbstractArray{<:AbstractFloat}, masses::AbstractVe
     return sum(reshape(repeat(masses, inner=3) .* vec(geom) / sum(masses), (3, :)), dims=2)
 end
 
+function center_of_mass_distance(sub_structure::AbstractMatrix, sub_structure_masses::AbstractVector, full_structure::AbstractMatrix, full_structure_masses::AbstractVector)
+    return norm(center_of_mass(sub_structure, sub_structure_masses) - center_of_mass(full_structure, full_structure_masses))
+end
+
 ### KABSCH CODE ADAPTED FROM BIOMOLECULARSTRUCTURES.jl https://github.com/hng/BiomolecularStructures.jl/blob/master/src/KABSCH/kabsch.jl ###
 
 
