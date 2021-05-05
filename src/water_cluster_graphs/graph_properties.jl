@@ -197,21 +197,21 @@ function label_water_type(G::LightGraphs.SimpleDiGraph)
     return labels
 end
 
-function get_count_of_each_water_label(labels::Dict{Symbol, Vector{Int}})
-    label_counts = Dict{Symbol, Int}(   :None => 0,
-                                        :D => 0,
-                                        :A => 0,
-                                        :DD => 0,
-                                        :AA => 0,
-                                        :AD => 0,
-                                        :AAD => 0,
-                                        :ADD => 0,
-                                        :AADD => 0,
-                                        :AAAD => 0,
-                                        :AAA => 0,
-                                        :AAADD => 0,
-                                        :AAAAD => 0,
-                                        :AAAADD => 0)
+function get_count_of_each_water_label(labels::Dict{Symbol, Vector{T}}) where T <: Real
+    label_counts = Dict{Symbol, T}( :None => 0,
+                                    :D => 0,
+                                    :A => 0,
+                                    :DD => 0,
+                                    :AA => 0,
+                                    :AD => 0,
+                                    :AAD => 0,
+                                    :ADD => 0,
+                                    :AADD => 0,
+                                    :AAAD => 0,
+                                    :AAA => 0,
+                                    :AAADD => 0,
+                                    :AAAAD => 0,
+                                    :AAAADD => 0)
     for key in keys(labels)
         label_counts[key] = length(labels[key])
     end

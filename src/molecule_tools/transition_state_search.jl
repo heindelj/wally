@@ -2,11 +2,6 @@ include("harmonic_frequencies.jl")
 
 # Everything here is based on the Peng and Schlegel paper: http://chem.wayne.edu/schlegel/Pub_folder/162.pdf
 # All of this assumes that the atoms come in sorted against one another.
-# This is a standard requirement, but one can probably guess the correct ordering
-# most of the time by finding the permutation which maximizes overlap of the 
-# reactant and product vectors. Try this sometime for robustness.
-
-# TODO: implement the algorithm described in the paper
 
 function rms(grad::AbstractVector)
     RMSD::Float64 = 0.0
