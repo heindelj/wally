@@ -21,7 +21,7 @@ end
 
 TTM(full_lib_path::AbstractString, version::AbstractString) = TTM(dlsym(dlopen(full_lib_path), version), full_lib_path, version, true, true, 0.0, nothing)
 TTM(full_lib_path::AbstractString) = TTM(full_lib_path, "ttm2f")
-TTM() = TTM("/home/heindelj/Research/Sotiris/MBE_Dynamics/MBE_Dynamics_Home_Code/pyMD/bin/ttm_all.so")
+TTM() = TTM("/home/heindelj/research/Sotiris/MBE_Dynamics/MBE_Dynamics_Home_Code/pyMD/bin/ttm_all.so")
 TTM(ttm::TTM) = TTM(ttm.full_lib_path, ttm.version)
 
 function get_energy_and_gradients(potential::TTM, coords::AbstractArray; sort_coords::Bool=true, reshape_coords::Bool=false)

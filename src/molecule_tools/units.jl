@@ -11,7 +11,10 @@ function conversion(unit1::Symbol, unit2::Symbol)
         :angstrom     => 0.529177210903,
         # masses
         :amu          => 1.0,
-        :au           => 1822.88839
+        :au_mass      => 1822.88839,
+        # temperature
+        :au_temperature => 1.0,
+        :kelvin         => 315774.659
     )
     return units[unit2] / units[unit1]
 end

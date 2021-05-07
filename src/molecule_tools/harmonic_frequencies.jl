@@ -64,75 +64,71 @@ function generate_hessian(f::Function, x_initial::AbstractArray, dx::Float64, on
     return unweighted_hessian
 end
 
+function inverse_mass_matrix(atom_labels::Vector{String})
+    return diagm(1 ./ sqrt.(atomic_masses(repeat(atom_labels, inner=3)) * conversion(:amu, :au_mass)))
+end
+
 function generate_mass_weighted_hessian(f::Function, x_initial::AbstractArray, atom_labels::Vector{String}, dx::Float64, on_diag_grid::Int, off_diag_grid::Int)
-    inv_sqrt_mass_matrix = diagm(1 ./ sqrt.(atomic_masses(repeat(atom_labels, inner=3)) * conversion(:amu, :au)))
+    inv_sqrt_mass_matrix = inverse_mass_matrix(atom_labels)
     unweighted_hessian = generate_hessian(f, x_initial, dx, on_diag_grid, off_diag_grid)
     return inv_sqrt_mass_matrix * unweighted_hessian * inv_sqrt_mass_matrix
 end
 
-function harmonic_frequencies(potential_function::Function, coords::AbstractArray, atom_labels::Vector{String}; dx::Float64=0.001, on_diag_grid::Int=5, off_diag_grid::Int=3, return_eigvecs::Bool=false, return_eigvals::Bool=false)
-    """
-    Computes the harmonic frequencies of a provided potential function.
-    If return eigvals is true, the eigenvalues of the hessian (rather than the frequencies)
-    will be returned in atomic units. Frequencies are returned in wavenumbers.
-    Note that the coords will be passed to the function as a vector with units of angstroms.
-    """
-    weighted_hessian = generate_mass_weighted_hessian(potential_function, coords * conversion(:angstrom, :bohr), atom_labels, dx, on_diag_grid, off_diag_grid)
-    if return_eigvecs
-        normal_modes = eigvecs(weighted_hessian)
-        if !return_eigvals
-            frequencies = sqrt.(complex.(eigvals(weighted_hessian)) ) * conversion(:hartree, :wavenumbers)
-            return normal_modes, frequencies
-        else
-            return normal_modes, eigvals(weighted_hessian)
-        end
-    else
-        if !return_eigvals
-            return sqrt.(complex.(eigvals(weighted_hessian)) ) * conversion(:hartree, :wavenumbers)
-        else
-            return eigvals(weighted_hessian)
+function insert_zero_eigvals!(eigvals::Vector{Float64}, num_to_insert::Int=6)
+    for (i, eig) in enumerate(eigvals)
+        if eig >= 0.0
+            for _ in 1:num_to_insert
+                insert!(eigvals, i, 0.0)
+            end
+            break
         end
     end
 end
 
-function projected_harmonic_frequencies(potential_function::Function, coords::AbstractArray, atom_labels::Vector{String}; dx::Float64=0.001, on_diag_grid::Int=5, off_diag_grid::Int=3, return_eigvecs::Bool=false, return_eigvals::Bool=false)
+function harmonic_analysis(potential_function::Function, coords::AbstractArray, atom_labels::Vector{String}, projected_frequencies::Bool=true; dx::Float64=0.001, on_diag_grid::Int=5, off_diag_grid::Int=3)
+    """
+    Performs a harmonic analysis, returning the energies of each vibrational mode
+    in wavenumbers, the eigenvectors in angstroms, and the reduced_masses in atomic units.
+    """
+    
     weighted_hessian = generate_mass_weighted_hessian(potential_function, coords * conversion(:angstrom, :bohr), atom_labels, dx, on_diag_grid, off_diag_grid)
     
     # now get N_vib vectors orthogonal to the translations and rotations from QR factorization
     # ROBUSTNESS: handle the case of an atom and linear molecule
-    translation_rotation_generator = infinitesimal_translation_and_rotation_matrix(coords * conversion(:angstrom, :bohr), atomic_masses(atom_labels) * conversion(:amu, :au))
-    Q, R = qr(translation_rotation_generator)
-    mw_projection_matrix = @view(Q[:, 7:end])
+    # See https://gaussian.com/vib/ for syntax and reference
+    translation_rotation_generator = infinitesimal_translation_and_rotation_matrix(coords * conversion(:angstrom, :bohr), atomic_masses(atom_labels) * conversion(:amu, :au_mass))
+    D, _ = qr(translation_rotation_generator)
 
-    # transform to translating and rotating frame
-    projected_hessian = mw_projection_matrix' * weighted_hessian * mw_projection_matrix
-
-    if return_eigvecs
-        normal_modes = eigvecs(projected_hessian)
-        if !return_eigvals
-            frequencies = sqrt.(complex.(eigvals(projected_hessian)) ) * conversion(:hartree, :wavenumbers)
-            return normal_modes, frequencies
-        else
-            return normal_modes, eigvals(projected_hessian)
-        end
+    # transform to translating and rotating frame and get eigvals
+    if projected_frequencies
+        rotating_frame_projection = D[:, 7:end]
+        projected_hessian = rotating_frame_projection' * weighted_hessian * rotating_frame_projection
+        evals = eigvals(projected_hessian)
+        insert_zero_eigvals!(evals, 6) # ROBUSTNESS: atom and linear molecule changes number of modes
     else
-        if !return_eigvals
-            return sqrt.(complex.(eigvals(projected_hessian)) ) * conversion(:hartree, :wavenumbers)
-        else
-            return eigvals(projected_hessian)
-        end
+        evals = eigvals(weighted_hessian)
     end
+    # get the cartesian normal modes
+    L = eigvecs(D' * weighted_hessian * D)
+    normal_modes = inverse_mass_matrix(atom_labels) * D * L
+
+    # normalize each column by sqrt of sum of inverse squares
+    normalization = [sqrt(1 / sum(normal_modes[:,i].^2)) for i in 1:size(normal_modes, 1)]
+    reduced_masses = normalization.^2
+    final_normal_modes = eachcol(normal_modes) ./ normalization .* conversion(:bohr, :angstrom)
+    return sqrt.(complex.(evals)) * conversion(:hartree, :wavenumbers), final_normal_modes, reduced_masses
 end
 
-function step_along_vector(coords::AbstractVecOrMat{T}, mode_vec::AbstractVector{T}, step_size::Float64=0.5) where T <: AbstractFloat
+function step_along_normal_mode(coords::AbstractVecOrMat{T}, mode_vec::AbstractVector{T}, num_steps_each_way::Int=5, step_size=750) where T <: AbstractFloat
     """
-    Steps coords along mode_vec by a distance step_size. All units assumed to be angstroms.
-    If a matrix is passed on, it is assumed that calling vec(coords) will align the elements properly.
+    Steps coords along cartesian normal mode num_steps_each_way symmetrically around coords. 
+    All units assumed to be angstroms.
+    If a matrix is passed in, it is assumed that calling vec(coords) will align the elements properly.
     """
     @assert length(coords) == length(mode_vec) "mode_vec and coords don't have same number of elements."
     final_shape = size(coords)
-    displaced_coords = vec(coords)
-    return reshape(displaced_coords + step_size * mode_vec, final_shape)
+    displaced_coords = [vec(coords) + i * mode_vec * step_size for i in -num_steps_each_way:num_steps_each_way]
+    return reshape.(displaced_coords, (final_shape,))
 end
 
 function get_zpe(frequencies::Array{Complex{T},1}) where T<:AbstractFloat
@@ -162,7 +158,7 @@ end
 
 function get_frequencies_from_xyz(input_file::AbstractString, potential_function::Function)
     _, labels, geoms = read_xyz(input_file)
-    frequencies = harmonic_frequencies(potential_function, geoms[begin], labels[begin])
+    evals, _, _ = harmonic_analysis(potential_function, geoms[begin], labels[begin])
     output_file::String = string(basename(input_file), "_frequencies.dat")
-    save_frequencies(output_file, frequencies)
+    save_frequencies(output_file, harmonic_frequencies(evals))
 end
