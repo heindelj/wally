@@ -1,23 +1,6 @@
 include("../molecule_tools/call_potential.jl")
 include("molecular_graph_utils.jl")
 
-function dihedral_angle(v1::AbstractVector, v2::AbstractVector, v3::AbstractVector)
-    """
-    Computes the dihedral angle from three vectors in degrees.
-    See this SE question for diagram and math: https://math.stackexchange.com/questions/47059/how-do-i-calculate-a-dihedral-angle-given-cartesian-coordinates
-    """
-    n1 = cross(v1 / norm(v1), v2 / norm(v2))
-    n1 /= norm(n1)
-    n2 = cross(v2 / norm(v2), v3 / norm(v3))
-    n2 /= norm(n2)
-    m1 = cross(n1, v2 / norm(v2))
-
-    x = n1 ⋅ n2
-    y = m1 ⋅ n2
-
-    return atand(y, x)
-end
-
 function get_dimer_energies(potential::AbstractPotential, geom::Matrix{T}, labels::AbstractVector, dimer_indices::Vector{Tuple{Int, Int}}) where T <: Real
     """
     Get the energy of each watwer dimer specified by dimer_indices.

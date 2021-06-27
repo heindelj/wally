@@ -33,6 +33,23 @@ function adjacency_matrix(water_cluster_geoms::Array{Array{T, 2}, 1};  simple_gr
     return adj_matrices
 end
 
+function dihedral_angle(v1::AbstractVector, v2::AbstractVector, v3::AbstractVector)
+    """
+    Computes the dihedral angle from three vectors in degrees.
+    See this SE question for diagram and math: https://math.stackexchange.com/questions/47059/how-do-i-calculate-a-dihedral-angle-given-cartesian-coordinates
+    """
+    n1 = cross(v1 / norm(v1), v2 / norm(v2))
+    n1 /= norm(n1)
+    n2 = cross(v2 / norm(v2), v3 / norm(v3))
+    n2 /= norm(n2)
+    m1 = cross(n1, v2 / norm(v2))
+
+    x = n1 ⋅ n2
+    y = m1 ⋅ n2
+
+    return atand(y, x)
+end
+
 ### SIMPLE GRAPHS ###
 function form_simple_molecular_graph(water_cluster_geom::Array{T, 2}) where T <: AbstractFloat
     """

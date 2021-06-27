@@ -1,5 +1,6 @@
 using Distributed
 using GraphIO
+using ThreadTools
 
 include("../molecule_tools/water_tools.jl")
 include("../molecule_tools/read_xyz.jl")
@@ -7,7 +8,6 @@ include("../molecule_tools/molecular_axes.jl") # centroid
 include("../molecule_tools/optimize_xyz.jl")
 include("molecular_graph_utils.jl")
 using Base.Filesystem
-
 
 mutable struct tcode
     indices::Vector{Int}
@@ -28,6 +28,18 @@ function load_tcode_file(file_name::AbstractString)
         end
     end
     return tcodes
+end
+
+function form_directed_molecular_graph(t_code::tcode)
+    G = SimpleDiGraph(t_code.indices[1])
+    for i in 3:2:length(t_code.indices)
+        add_edge!(G, t_code.indices[i], t_code.indices[i+1])
+    end
+    return G
+end
+
+function form_directed_molecular_graph(t_codes::AbstractVector{tcode})
+    return form_directed_molecular_graph.(t_codes)
 end
 
 function get_hbond_partners_from_tcode(tcode_array::tcode)
@@ -111,27 +123,22 @@ function structure_from_tcode(t_code::tcode; OO_distance::Float64 = 2.65, OH_dis
     return structure_from_tcode(t_code, structure, OH_distance=OH_distance, free_OH_distance=free_OH_distance)
 end
 
-function structure_from_tcode(t_code::tcode, ref_coords::AbstractMatrix; OH_distance::Float64 = 0.98, free_OH_distance::Float64 = 0.95)
-    """
-    Takes a tcode and set of reference coordinates for water molecules in OHH order.
-    Returns a complete water cluster structure.
-    """
+function structure_from_tcode!(t_code::tcode, ref_coords::AbstractMatrix, structure::AbstractMatrix; OH_distance::Float64=0.98, free_OH_distance::Float64=0.95)
     # get the oxygen atom positions at the approproate indices
     remaining_indices = collect(1:size(ref_coords)[2])
     used_indices = collect(1:3:size(ref_coords)[2]) # start with the oxygen indices
-    structure = zero(ref_coords)
-    structure[:, used_indices] = ref_coords[:, used_indices]
+    @views structure[:, used_indices] = ref_coords[:, used_indices]
 
     # place the hydrogen-bonded h atoms
     pairs = get_hbond_partners_from_tcode(t_code)
-    for (i, pair) in enumerate(pairs)
+    @inbounds for (i, pair) in enumerate(pairs)
         @views h_vec = structure[:, 3 * pair[2] - 2] - structure[:, 3 * pair[1] - 2]
         t = OH_distance / norm(h_vec)
         if iszero(@view(structure[:, (3 * pair[1] - 2) + 1]))
-            structure[:, (3 * pair[1] - 2) + 1] = structure[:, 3 * pair[1] - 2] + t * h_vec
+            @views structure[:, (3 * pair[1] - 2) + 1] = structure[:, 3 * pair[1] - 2] + t * h_vec
             push!(used_indices, (3 * pair[1] - 2) + 1)
         else
-            structure[:, (3 * pair[1] - 2) + 2] = structure[:, 3 * pair[1] - 2] + t * h_vec
+            @views structure[:, (3 * pair[1] - 2) + 2] = structure[:, 3 * pair[1] - 2] + t * h_vec
             push!(used_indices, (3 * pair[1] - 2) + 2)
         end
     end
@@ -167,8 +174,16 @@ function structure_from_tcode(t_code::tcode, ref_coords::AbstractMatrix; OH_dist
 
         @views structure[:,i_Oxygen + 1] = structure[:,i_Oxygen] + OH_1
         @views structure[:,i_Oxygen + 2] = structure[:,i_Oxygen] + OH_2
-
     end
+end
+
+function structure_from_tcode(t_code::tcode, ref_coords::AbstractMatrix; OH_distance::Float64 = 0.98, free_OH_distance::Float64 = 0.95)
+    """
+    Takes a tcode and set of reference coordinates for water molecules in OHH order.
+    Returns a complete water cluster structure.
+    """
+    structure = zero(ref_coords)
+    structure_from_tcode!(t_code, ref_coords, structure, OH_distance=OH_distance, free_OH_distance=free_OH_distance)
     return structure
 end
 
@@ -176,7 +191,12 @@ function structures_from_tcode(t_codes::AbstractArray{tcode, 1}, ref_coords::Abs
     """
     Make many structures from the relevant tcodes and reference geometry.
     """
-    return structure_from_tcode.(t_codes, (ref_coords,), OH_distance=OH_distance, free_OH_distance=free_OH_distance)
+    out_structures = [zero(ref_coords) for _ in 1:length(t_codes)]
+    Threads.@threads for i in 1:length(t_codes)
+        structure_from_tcode!(t_codes[i], ref_coords, out_structures[i], OH_distance=OH_distance, free_OH_distance=free_OH_distance)
+    end
+    return out_structures
+    #return structure_from_tcode.(t_codes, (ref_coords,), OH_distance=OH_distance, free_OH_distance=free_OH_distance)
 end
 
 function structures_from_tcode(t_codes::AbstractArray{tcode, 1}; OO_distance::Float64 = 2.65, OH_distance::Float64 = 0.98, free_OH_distance::Float64 = 0.95)

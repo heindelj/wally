@@ -21,7 +21,6 @@ function count_rings(G::LightGraphs.SimpleGraph, ring_size::Int; return_paths::B
         for neighbor in LightGraphs.neighbors(G, next_node)
             if current_path_length == ring_size
                 if neighbor == path_to_expand[begin]
-                    G_sub = induced_subgraph(G, path_to_expand)
                     degrees::Vector{Int} = degree(induced_subgraph(G, path_to_expand)[1])
                     
                     # check if we've already found this ring
@@ -56,6 +55,25 @@ end
 
 function count_rings(graphs::AbstractVector{LightGraphs.SimpleGraph{Int}}, ring_sizes::UnitRange{Int})
     return pmap(x -> count_rings(x, ring_sizes), graphs)
+end
+
+function count_t1d_bonds(G::SimpleDiGraph{Int64})
+    """
+    Just counts the number of t1d bonds from a graph.
+    """
+    water_labels = label_water_type(G)
+
+    num_t1d_pairs::Int = 0
+    for i in vertices(G)
+        if i in water_labels[:AAD]
+            neighbor = outneighbors(G, i)[1]
+            # if the neighbor is ADD, then we have a t1d pair
+            if neighbor in water_labels[:ADD]
+                num_t1d_pairs += 1
+            end
+        end
+    end
+    return num_t1d_pairs
 end
 
 function get_swb_labels(geom::Matrix{T}, labels::AbstractVector) where T <: Real
@@ -232,4 +250,13 @@ end
 
 function count_free_OHs(G::SimpleDiGraph{Int})
     return 2 * length(vertices(G)) - count_hydrogen_bonds(G)
+end
+
+function OH_distances(geom::AbstractMatrix{T}) where T <: AbstractFloat
+    OH_bond_lengths = []
+    for i in 1:3:size(geom, 2)
+        push!(OH_bond_lengths, norm(geom[:,i] - geom[:, i+1]))
+        push!(OH_bond_lengths, norm(geom[:,i] - geom[:, i+2]))
+    end
+    return OH_bond_lengths
 end
