@@ -1,6 +1,5 @@
 using Distributed
 using GraphIO
-using ThreadTools
 
 include("../molecule_tools/water_tools.jl")
 include("../molecule_tools/read_xyz.jl")
