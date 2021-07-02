@@ -4,7 +4,7 @@ include("atomic_masses.jl")
 include("read_xyz.jl")
 include("inertia_tensor.jl")
 
-function get_second_derivative_on_stencil(f::Function, x_initial::AbstractVector, index::Int, dx::Float64, grid_size::Int)
+function get_second_derivative_on_stencil(f::Function, x_initial::AbstractVector, index::Int, dx::Float64, grid_size::Int, shape::Union{Tuple{Int}, Tuple{Int, Int}})
     """
     Gets the on-diagonal second derivatives from an arbitrary order finite difference.
     Recommned grid size for Hessians is 5 (i.e. 5-poiny stencil).
@@ -20,12 +20,12 @@ function get_second_derivative_on_stencil(f::Function, x_initial::AbstractVector
     end
     function_values = zeros(length(dx_grid))
     for (i, geom) in enumerate(eachcol(stencil_coordinates))
-        @inbounds function_values[i] = f(geom * conversion(:bohr, :angstrom))
+        @inbounds function_values[i] = f(reshape(geom, shape) * conversion(:bohr, :angstrom))
     end
     return dot(function_values, wts)
 end
 
-function get_mixed_second_derivative_on_stencil(f::Function, x_initial::AbstractVector, index1::Int, index2::Int, dx::Float64, grid_size::Int)
+function get_mixed_second_derivative_on_stencil(f::Function, x_initial::AbstractVector, index1::Int, index2::Int, dx::Float64, grid_size::Int, shape::Union{Tuple{Int}, Tuple{Int, Int}})
     """
     Using 3x3 point 2-D stencil for mixed partial derivatives.
     """
@@ -41,25 +41,25 @@ function get_mixed_second_derivative_on_stencil(f::Function, x_initial::Abstract
     end
     function_values = zeros(length(dx_grid)^2)
     for (i, geom) in enumerate(eachcol(stencil_coordinates))
-        function_values[i] = f(geom * conversion(:bohr, :angstrom))
+        function_values[i] = f(reshape(geom, shape) * conversion(:bohr, :angstrom))
     end
     return dot(reshape(function_values, (length(dx_grid), length(dx_grid)))' * wts, wts)
 end
 
-function generate_hessian(f::Function, x_initial::AbstractArray, dx::Float64, on_diag_grid::Int, off_diag_grid::Int)
+function generate_hessian(f::Function, x_initial::AbstractArray, dx::Float64, on_diag_grid::Int, off_diag_grid::Int, shape::Union{Tuple{Int}, Tuple{Int, Int}})
     unweighted_hessian = zeros(length(x_initial), length(x_initial))
     x = vec(x_initial)
     # get just the lower triangle
     for i_col in 1:(length(x_initial)-1)
         for i_row in (i_col+1):length(x_initial)
-            @inbounds unweighted_hessian[i_row, i_col] = get_mixed_second_derivative_on_stencil(f, x, i_row, i_col, dx, off_diag_grid)
+            @inbounds unweighted_hessian[i_row, i_col] = get_mixed_second_derivative_on_stencil(f, x, i_row, i_col, dx, off_diag_grid, shape)
         end
     end
     unweighted_hessian += unweighted_hessian'
 
     # get the on diagonal elements
     for i in 1:length(x_initial)
-        @inbounds unweighted_hessian[i, i] = get_second_derivative_on_stencil(f, x, i, dx, on_diag_grid)
+        @inbounds unweighted_hessian[i, i] = get_second_derivative_on_stencil(f, x, i, dx, on_diag_grid, shape)
     end
     return unweighted_hessian
 end
@@ -68,9 +68,9 @@ function inverse_mass_matrix(atom_labels::Vector{String})
     return diagm(1 ./ sqrt.(atomic_masses(repeat(atom_labels, inner=3)) * conversion(:amu, :au_mass)))
 end
 
-function generate_mass_weighted_hessian(f::Function, x_initial::AbstractArray, atom_labels::Vector{String}, dx::Float64, on_diag_grid::Int, off_diag_grid::Int)
+function generate_mass_weighted_hessian(f::Function, x_initial::AbstractArray, atom_labels::Vector{String}, dx::Float64, on_diag_grid::Int, off_diag_grid::Int, shape::Union{Tuple{Int}, Tuple{Int, Int}})
     inv_sqrt_mass_matrix = inverse_mass_matrix(atom_labels)
-    unweighted_hessian = generate_hessian(f, x_initial, dx, on_diag_grid, off_diag_grid)
+    unweighted_hessian = generate_hessian(f, x_initial, dx, on_diag_grid, off_diag_grid, shape)
     return inv_sqrt_mass_matrix * unweighted_hessian * inv_sqrt_mass_matrix
 end
 
@@ -85,13 +85,13 @@ function insert_zero_eigvals!(eigvals::Vector{Float64}, num_to_insert::Int=6)
     end
 end
 
-function harmonic_analysis(potential_function::Function, coords::AbstractArray, atom_labels::Vector{String}, projected_frequencies::Bool=true; dx::Float64=0.001, on_diag_grid::Int=5, off_diag_grid::Int=3)
+function harmonic_analysis(potential_function::Function, coords::AbstractArray, atom_labels::Vector{String}, projected_frequencies::Bool=false; dx::Float64=0.001, on_diag_grid::Int=5, off_diag_grid::Int=3)
     """
     Performs a harmonic analysis, returning the energies of each vibrational mode
     in wavenumbers, the eigenvectors in angstroms, and the reduced_masses in atomic units.
     """
     
-    weighted_hessian = generate_mass_weighted_hessian(potential_function, coords * conversion(:angstrom, :bohr), atom_labels, dx, on_diag_grid, off_diag_grid)
+    weighted_hessian = generate_mass_weighted_hessian(potential_function, coords * conversion(:angstrom, :bohr), atom_labels, dx, on_diag_grid, off_diag_grid, size(coords))
     
     # now get N_vib vectors orthogonal to the translations and rotations from QR factorization
     # ROBUSTNESS: handle the case of an atom and linear molecule

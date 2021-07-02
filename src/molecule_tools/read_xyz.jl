@@ -54,6 +54,48 @@ function read_xyz(ifile::String; T::Type=Float64, static::Bool=false, up_to_N::I
     return header, atom_labels, geoms
 end
 
+function read_fragmented_xyz(ifile::String; T::Type=Float64)
+    """
+    Reads in an xyz file with one fragmented geometry, returning the header, atom labels, 
+    and coordinates as arrays of strings and Float64s for the coordinates.
+    The fragments are separated by '--' in each case.
+    """
+
+    header = Array{String, 1}()
+    atom_labels = Array{Array{String, 1}, 1}()
+    geoms = Vector{Matrix{T}}()
+    open(ifile, "r") do io
+        line = readline(io)
+        # allocate the geometry for this frame
+        N = parse(Int, line)
+
+        # store the header for this frame
+        head = string(line, "\n", readline(io))
+        push!(header, head)
+        # loop through the geometry storing the vectors and atom labels as you go
+        new_geom::Vector{Vector{T}} = []
+        labels::Vector{String} = []
+        while !eof(io) 
+            line = readline(io)
+            if line == "--"
+                push!(geoms, hcat(new_geom...))
+                push!(atom_labels, labels)
+                new_geom = []
+                labels = []
+                continue
+            end
+
+            split_line = split(line)
+
+            push!(labels, split_line[1])
+            push!(new_geom, [parse(T, split_line[2]), parse(T, split_line[3]), parse(T, split_line[4])])
+        end
+        push!(geoms, hcat(new_geom...))
+        push!(atom_labels, labels)
+    end
+    return repeat(header, length(atom_labels)), atom_labels, geoms
+end
+
 function write_xyz(outfile::AbstractString, header::AbstractArray, labels::AbstractArray, geoms::AbstractArray; append::Bool=false, directory::AbstractString="")
     """
     Writes an xyz file with the elements returned by read_xyz.

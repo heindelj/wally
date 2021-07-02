@@ -16,9 +16,19 @@ function get_many_body_geometries(coords::AbstractArray, order::Int)
     coords is an array of arrays.
     """
     subsystem_indices = [combinations([1:length(coords)...], order)...]
-    subsystem_combos = Array{Array{Float64, 2}, 1}(undef, length(subsystem_indices))
-    for i in 1:length(subsystem_indices)
-        subsystem_combos[i] = hcat(getindex(coords, subsystem_indices[i])...)
+    subsystem_combos = []
+    if eltype(coords) <: AbstractMatrix
+        subsystem_combos = Vector{eltype(coords)}(undef, length(subsystem_indices))
+        for i in 1:length(subsystem_indices)
+            subsystem_combos[i] = hcat(getindex(coords, subsystem_indices[i])...)
+        end
+    elseif eltype(eltype(coords)) <: AbstractString
+        subsystem_combos = Vector{eltype(coords)}(undef, length(subsystem_indices))
+        for i in 1:length(subsystem_indices)
+            subsystem_combos[i] = vcat(getindex(coords, subsystem_indices[i])...)
+        end
+    else
+        @assert false "Can only combine AbstractMatrix and String types right now."
     end
     return subsystem_combos
 end

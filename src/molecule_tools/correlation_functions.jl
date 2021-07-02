@@ -16,6 +16,7 @@ function autocorrelation_function(time_series::AbstractArray, block_width::Int=7
     if max_blocks > 0 && max_blocks < num_blocks
         num_blocks = max_blocks
     end
+    @assert num_blocks > 0 "Number of blocks isn't greater than zero. You may not have enough data for specified block width."
     block_stride = convert(Int, floor(block_width / 20))
 
     for col in ProgressBar(eachcol(time_series))
@@ -37,7 +38,7 @@ function vdos(signal::AbstractArray, frame_spacing::Float64)
     Args:
         signal: 1-D array representing some time series
         frame_spacing: float which is the spacing in femtoseconds of the frames
-    Return: both the fourier frequencies and the signal intensity as a tuple. 
+    Return: both the fourier frequencies and the signal intensity as a tuple.
     """
     freqs = FFTW.rfftfreq(length(signal), 1 / frame_spacing)[1:floor(Int64, length(signal)/2)] * 10^(15) / (2.9979*(10^10)) # fs to cm^-1
     vdos = real.(FFTW.rfft(signal)[1:floor(Int64, length(signal)/2)])
