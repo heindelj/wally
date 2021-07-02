@@ -1,8 +1,8 @@
 
 Base.@kwdef mutable struct NWChemInput
     basis::Dict{String, String} # for specifying different basis sets for different atoms
-    theory::String
-    task::Vector{String} = ["energy"] # can specify multiple tasks
+    theory::Vector{String}
+    task::Vector{String} = ["gradient"] # can specify multiple tasks
     memory::Int = 1000 # mb
     block_settings::Vector{Tuple{String, Dict{String, String}}} = []
     special_settings::Vector{String} = [] # for e.g. set n_lin_dep 0
@@ -12,10 +12,12 @@ Base.@kwdef mutable struct NWChemInput
     settings_string::String  = ""           # the string for everything after the geometry.
 end
 
-NWChemInput(basis::Dict{String, String}, theory::String) = NWChemInput(basis = basis, theory = theory)
-NWChemInput(basis::String, theory::String) = NWChemInput(basis = Dict("*" => basis), theory = theory)
+NWChemInput(basis::Dict{String, String}, theory::String) = NWChemInput(basis = basis, theory = [lowercase(theory)])
+NWChemInput(basis::Dict{String, String}, theory::Vector{String}) = NWChemInput(basis = basis, theory = lowercase.(theory))
+NWChemInput(basis::String, theory::String) = NWChemInput(basis = Dict("*" => basis), theory = [lowercase(theory)])
+NWChemInput(basis::String, theory::Vector{String}) = NWChemInput(basis = Dict("*" => basis), theory = lowercase.(theory))
 
-function write_input_file(input::NWChemInput, geoms::Vector{Matrix{Float64}}, atom_labels::Vector{Vector{String}}, input_file_name::String="input.nw", out_directory::String="nwchem")
+function write_input_file(input::NWChemInput, geoms::Vector{Matrix{T}}, atom_labels::Vector{Vector{String}}, input_file_name::String="input.nw", out_directory::String="nwchem") where T <: AbstractFloat
     set_header_string!(input)
     set_geometry_string!(input, geoms, atom_labels)
     set_settings_string!(input)
@@ -27,9 +29,16 @@ function write_input_file(input::NWChemInput, geoms::Vector{Matrix{Float64}}, at
     if !isdir(out_directory)
         mkdir(out_directory)
     end
-    open(next_unique_name(string(out_directory, "/", input_file_name)), "w") do io
+    used_input_name::String = next_unique_name(string(out_directory, "/", input_file_name))
+    open(used_input_name, "w") do io
         write(io, input_file)
     end
+    return used_input_name
+end
+
+function write_input_file(input::NWChemInput, geoms::Matrix{T}, atom_labels::Vector{String}, input_file_name::String="input.nw", out_directory::String="nwchem") where T <: AbstractFloat
+    used_input_name = write_input_file(input, [geoms], [atom_labels], input_file_name, out_directory)
+    return used_input_name
 end
 
 function next_unique_name(file_name::String, i::Int=1)
@@ -85,23 +94,41 @@ function get_memory_string(input::NWChemInput)
     return string("memory ", input.memory, " mb\n")
 end
 
-function set_theory!(input::NWChemInput, theory::String)
+function set_theory!(input::NWChemInput, theory::Union{String, Vector{String}})
     possible_theories = ["hf", "scf", "mp2", "ccsd", "ccsd(t)", "dft"]
-    theory = lowercase(theory)
-    if theory in possible_theories
-        theory == "hf" ? input.theory = "scf" : input.theory = theory
+    theory = lowercase.(theory)
+    input.theory = []
+    if typeof(theory) == String
+        push!(input.theory, theory)
     else
-        println(string("WARNING: Requested theoretical method ", theory, " is not known. Proceeding, but check that this is valid input before running."))
-        input.theory = theory
+        append!(input.theory, theory)
+    end
+    for i in eachindex(input.theory)
+        if input.theory[i] in possible_theories
+            input.theory[i] == "hf" ? input.theory[i] = "scf" : input.theory[i] = input.theory[i]
+        else
+            println(string("WARNING: Requested theoretical method ", input.theory[i], " is not known. Proceeding, but check that this is valid input before running."))
+        end
     end
 end
 
 function set_task!(input::NWChemInput, task::Union{String, Vector{String}})
-    append!(input.task, task)
+    input.task = []
+    if typeof(task) == String
+        push!(input.task, task)
+    else
+        append!(input.task, task)
+    end
 end
 
 function get_task_string(input::NWChemInput)
-    return join([string("task ", input.theory, " ", task, "\n") for task in input.task])
+    if length(input.theory) == 1 && length(input.theory) < length(input.task)
+        input.theory = repeat(input.theory, length(input.task) - length(input.theory) + 1)
+    elseif length(input.task) == 1 && length(input.theory) > length(input.task)
+        input.task = repeat(input.task, length(input.theory) - length(input.task) + 1)
+    end
+    @assert length(input.theory) == length(input.task) string("Theory and Task are not the same length and can't resolve what to do. Got ", length(input.theory), " theory names and ", length(input.task), " tasks.")
+    return join([string("task ", input.theory[i], " ", input.task[i], "\n") for i in 1:length(input.task)])
 end
 
 function set_block!(input::NWChemInput, block_name::String, block_settings::Pair{String, String}...)

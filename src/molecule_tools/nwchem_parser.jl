@@ -1,7 +1,3 @@
-function parse_nwchem_output_file(output_file::String, observables::String...)
-    
-end
-
 function get_matching_key(line::String, search_terms::Dict{String, String})
     for key in keys(search_terms)
         if occursin(search_terms[key], line)
@@ -11,7 +7,7 @@ function get_matching_key(line::String, search_terms::Dict{String, String})
     return ""
 end
 
-function get_energies(output_file_lines::Vector{String})
+function parse_energies(output_file_lines::Vector{String})
     search_terms = (Dict{String, String}(
         "scf"     => "Total SCF energy",
         "mp2"     => "Total MP2 energy",
@@ -33,7 +29,7 @@ function get_energies(output_file_lines::Vector{String})
     return energies
 end
 
-function get_gradients(output_file_lines::Vector{String})
+function parse_gradients(output_file_lines::Vector{String})
     search_terms = (Dict{String, String}(
         "scf"     => "RHF ENERGY GRADIENTS",
         "mp2"     => "mp2 ENERGY GRADIENTS",
@@ -52,7 +48,7 @@ function get_gradients(output_file_lines::Vector{String})
             grads = zeros(3, num_atoms)
             j = 0
             while output_file_lines[i+j+4] != ""
-                grads[:, j+1] = parse.(Float64, split(nwchem_out[i+j+4])[end-2:end])
+                grads[:, j+1] = parse.(Float64, split(output_file_lines[i+j+4])[end-2:end])
                 j += 1
             end
 

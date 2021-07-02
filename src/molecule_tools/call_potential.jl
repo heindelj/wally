@@ -7,7 +7,10 @@ using Base.Filesystem
 
 abstract type AbstractPotential end
 
-# TTM struct and some useful constructors
+########################
+###    TTM Water     ###
+########################
+
 mutable struct TTM <: AbstractPotential
     potential_function::Ptr
     full_lib_path::String
@@ -83,7 +86,9 @@ function get_gradients!(potential::TTM, storage::AbstractArray, coords::Abstract
     storage[:] = get_gradients(potential, coords, sort_coords=sort_coords, reshape_coords=reshape_coords)
 end
 
-### MBPol Water Potential ###
+########################
+###   MB-Pol Water   ###
+########################
 
 mutable struct MBPol <: AbstractPotential
     potential_function::Ptr
@@ -148,7 +153,9 @@ function get_gradients!(potential::MBPol, storage::AbstractArray, coords::Abstra
     storage[:] = get_gradients(potential, coords, reshape_coords=reshape_coords)
 end
 
-### PROTONATED WATER POTENTIAL ###
+########################
+### Protonated Water ###
+########################
 
 mutable struct Protonated_Water <: AbstractPotential
     full_lib_path::AbstractString
@@ -235,3 +242,103 @@ function get_num_waters(coords::AbstractArray)
         return num_waters / 3
     end
 end
+
+
+########################
+###      NWChem      ###
+########################
+include("nwchem_input_generator.jl")
+include("nwchem_parser.jl")
+
+struct NWChem <: AbstractPotential
+    executable_command::String
+    nwchem_input::NWChemInput
+end
+
+NWChem(executable::String, basis::Dict{String, String}, theory::String) = NWChem(executable, NWChemInput(basis, theory))
+NWChem(executable::String, basis::Dict{String, String}, theory::Vector{String}) = NWChem(executable, NWChemInput(basis, theory))
+NWChem(executable::String, basis::String, theory::String) = NWChem(executable, NWChemInput(basis, theory))
+NWChem(executable::String, basis::String, theory::Vector{String}) = NWChem(executable, NWChemInput(basis, theory))
+
+function get_energy(nwchem::NWChem, coords::Matrix{T}, atom_labels::Vector{String}, return_dict::Bool=false) where T <: AbstractFloat
+    set_task!(nwchem.nwchem_input, "energy")
+    used_input_name::String = write_input_file(nwchem.nwchem_input, coords, atom_labels)
+    output_name = string(splitext(used_input_name)[1], ".out")
+    output_string = read(pipeline(`$(nwchem.executable_command) $used_input_name`), String)
+    open(output_name, "w") do io
+        write(io, output_string)
+    end
+    nwchem_output = string.(split(output_string, '\n'))
+    
+    energies = parse_energies(nwchem_output)
+    if return_dict
+        return energies
+    elseif length(nwchem.nwchem_input.theory) == 1
+        return energies[nwchem.nwchem_input.theory[1]][1]
+    else
+        return energies
+    end
+end
+
+function get_energy(nwchem::NWChem, coords::Vector{Matrix{T}}, atom_labels::Vector{Vector{String}}, return_dict::Bool=false) where T <: AbstractFloat
+    set_task!(nwchem.nwchem_input, "energy")
+    used_input_name::String = write_input_file(nwchem.nwchem_input, coords, atom_labels)
+    output_name = string(splitext(used_input_name)[1], ".out")
+    output_string = read(pipeline(`$(nwchem.executable_command) $used_input_name`), String)
+    open(output_name, "w") do io
+        write(io, output_string)
+    end
+    nwchem_output = string.(split(output_string, '\n'))
+    
+    energies = parse_energies(nwchem_output)
+    if return_dict
+        return energies
+    elseif length(nwchem.nwchem_input.theory) == 1
+        return energies[nwchem.nwchem_input.theory[1]]
+    else
+        return energies
+    end
+end
+
+function get_energy_and_gradients(nwchem::NWChem, coords::Matrix{T}, atom_labels::Vector{String}, return_dict::Bool=false) where T <: AbstractFloat
+    set_task!(nwchem.nwchem_input, "gradient")
+    used_input_name::String = write_input_file(nwchem.nwchem_input, coords, atom_labels)
+    output_name = string(splitext(used_input_name)[1], ".out")
+    output_string = read(pipeline(`$(nwchem.executable_command) $used_input_name`), String)
+    open(output_name, "w") do io
+        write(io, output_string)
+    end
+    nwchem_output = string.(split(output_string, '\n'))
+    
+    energies  = parse_energies(nwchem_output)
+    gradients = parse_gradients(nwchem_output)
+    if return_dict
+        return energies, gradients
+    elseif length(nwchem.nwchem_input.theory) == 1
+        return energies[nwchem.nwchem_input.theory[1]][1], gradients[nwchem.nwchem_input.theory[1]][1]
+    else
+        return energies, gradients
+    end
+end
+
+function get_energy_and_gradients(nwchem::NWChem, coords::Vector{Matrix{T}}, atom_labels::Vector{Vector{String}}, return_dict::Bool=false) where T <: AbstractFloat
+    set_task!(nwchem.nwchem_input, "gradient")
+    used_input_name::String = write_input_file(nwchem.nwchem_input, coords, atom_labels)
+    output_name = string(splitext(used_input_name)[1], ".out")
+    output_string = read(pipeline(`$(nwchem.executable_command) $used_input_name`), String)
+    open(output_name, "w") do io
+        write(io, output_string)
+    end
+    nwchem_output = string.(split(output_string, '\n'))
+    
+    energies  = parse_energies(nwchem_output)
+    gradients = parse_gradients(nwchem_output)
+    if return_dict
+        return energies, gradients
+    elseif length(nwchem.nwchem_input.theory) == 1
+        return energies[nwchem.nwchem_input.theory[1]], gradients[nwchem.nwchem_input.theory[1]]
+    else
+        return energies, gradients
+    end
+end
+
