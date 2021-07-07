@@ -1,8 +1,8 @@
 using Combinatorics, Distributed, SharedArrays
 include("call_potential.jl")
 
-struct MBEPotential <: AbstractPotential
-    potential::AbstractPotential
+struct MBEPotential{T} <: AbstractPotential
+    potential::T
     order::Int
 end
 
@@ -115,6 +115,7 @@ function get_gradients(mbe_potential::MBEPotential, coords::AbstractVector{Matri
     """
     summed_gradients = [zeros((3, sum(size.(coords, 2)))) for _ in 1:mbe_potential.order]
     all_subsystems = get_many_body_geometries.((coords,), [1:mbe_potential.order...])
+    subsystem_energies = [zero.(all_subsystems[i]) for i in 1:length(all_subsystems)]
     subsystem_gradients = [zero.(all_subsystems[i]) for i in 1:length(all_subsystems)]
     if copy_construct_potential
         for i in length(all_subsystems):-1:1
@@ -150,4 +151,165 @@ end
 
 function get_gradients!(potential::MBEPotential, storage::AbstractArray, coords::AbstractVector{Matrix{T}}, copy_construct_potential::Bool=false; kwargs...) where T <: Real
     storage[:] = get_gradients(potential, coords, false, copy_construct_potential; kwargs...)
+end
+
+function get_energy_and_gradients(mbe_potential::MBEPotential, coords::AbstractVector{Matrix{T}}, return_mbe_data=false, copy_construct_potential::Bool=false; kwargs...) where T <: Real
+    """
+    Forms the n-body geometries and calls the potential belonging to
+    mbe_potential on each of them to return the many-body energy and gradients.
+    Note that coords is an array of sub-systems (the fragments).
+    """
+    energies = zeros(mbe_potential.order)
+    summed_gradients = [zeros((3, sum(size.(coords, 2)))) for _ in 1:mbe_potential.order]
+    all_subsystems = get_many_body_geometries.((coords,), [1:mbe_potential.order...])
+    subsystem_energies = [[zero(Float64) for _ in 1:length(all_subsystems[i])] for i in 1:length(all_subsystems)]
+    subsystem_gradients = [zero.(all_subsystems[i]) for i in 1:length(all_subsystems)]
+    if copy_construct_potential
+        for i in length(all_subsystems):-1:1
+            @sync @distributed for j in 1:length(all_subsystems[i])
+                subsystem_energies[i][j], subsystem_gradients[i][j] = get_energy_and_gradients(typeof(mbe_potential.potential)(mbe_potential.potential), all_subsystems[i][j]; kwargs...)
+            end
+        end
+    else
+        for i in length(all_subsystems):-1:1
+            @sync @distributed for j in 1:length(all_subsystems[i])
+                subsystem_energies[i][j], subsystem_gradients[i][j] = get_energy_and_gradients(mbe_potential.potential, all_subsystems[i][j]; kwargs...)
+            end
+        end
+    end
+
+    # now put the subsystem forces into the appropriate indices of total forces
+    for i in 1:mbe_potential.order
+        subsytem_indices = force_indices(i, coords)
+        @assert length(subsytem_indices) == length(subsystem_gradients[i]) "Indices and gradients aren't same length."
+        for j in 1:length(subsytem_indices)
+            @views summed_gradients[i][:, subsytem_indices[j]] += subsystem_gradients[i][j]
+        end
+        energies[i] = sum(subsystem_energies[i])
+    end
+
+    mbe_gradient_data = get_mbe_data_from_subsystem_sums(summed_gradients, length(coords))
+    mbe_energy_data::Array{Float64, 1} = get_mbe_data_from_subsystem_sums(energies, length(coords))
+    
+    if return_mbe_data
+        return mbe_energy_data, mbe_gradient_data
+    else
+        return sum(mbe_energy_data), sum(mbe_gradient_data)
+    end
+end
+
+function get_energy_and_gradients(mbe_potential::MBEPotential{NWChem}, coords::AbstractVector{Matrix{T}}, labels::AbstractVector{Vector{String}}, return_mbe_data::Bool=false) where T <: AbstractFloat
+    """
+    Forms the n-body geometries and calls the nwchem potential belonging to
+    mbe_potential on each of them to return the many-body energy and gradients.
+    Note that coords is an array of sub-systems (the fragments).
+    """
+    @assert length(coords) == length(labels) "Fragment coordinates and labels are not the same length. The labels should be an array of arrays of all atom labels, as should the geometries."
+    energies = zeros(mbe_potential.order)
+    summed_gradients = [zeros((3, sum(size.(coords, 2)))) for _ in 1:mbe_potential.order]
+    all_subsystems = get_many_body_geometries.((coords,), [1:mbe_potential.order...])
+    all_subsystem_labels = get_many_body_geometries.((labels,), [1:mbe_potential.order...])
+    subsystem_energies = [[zero(Float64) for _ in 1:length(all_subsystems[i])] for i in 1:length(all_subsystems)]
+    subsystem_gradients = [zero.(all_subsystems[i]) for i in 1:length(all_subsystems)]
+    subsystem_names = [[string("input_", i, "_", j, ".nw") for j in 1:length(all_subsystems[i])] for i in 1:length(all_subsystems)]
+    # this works and avoids name collisions, but we don't seem to be getting the actual data back for some reason...
+    for i in length(all_subsystems):-1:1
+        @sync @distributed for j in 1:length(all_subsystems[i])
+            subsystem_energies[i][j], subsystem_gradients[i][j] = get_energy_and_gradients(mbe_potential.potential, all_subsystems[i][j], all_subsystem_labels[i][j], string("input_", i, "_", j, ".nw"))
+        end
+    end
+    println(subsystem_energies)
+
+    # now put the subsystem forces into the appropriate indices of total forces
+    for i in 1:mbe_potential.order
+        subsytem_indices = force_indices(i, coords)
+        @assert length(subsytem_indices) == length(subsystem_gradients[i]) "Indices and gradients aren't same length."
+        for j in 1:length(subsytem_indices)
+            @views summed_gradients[i][:, subsytem_indices[j]] += subsystem_gradients[i][j]
+        end
+        energies[i] = sum(subsystem_energies[i])
+    end
+
+    mbe_gradient_data = get_mbe_data_from_subsystem_sums(summed_gradients, length(coords))
+    mbe_energy_data::Array{Float64, 1} = get_mbe_data_from_subsystem_sums(energies, length(coords))
+    
+    if return_mbe_data
+        return mbe_energy_data, mbe_gradient_data
+    else
+        return sum(mbe_energy_data), sum(mbe_gradient_data)
+    end
+end
+
+function poll_and_spawn_nwchem_mbe_calculations(nwchem::NWChem, all_subsystem_coords::Vector{Matrix{T}}, all_subsystem_labels::Vector{Vector{String}}, max_mbe_order::Int, num_fragments::Int) where T <: AbstractFloat
+    """
+    Polls all tasks spawned at workers to see if they are finished. If so,
+    immediately spawn a new calculation for this worker to do and then fetch
+    the results from the appropriate future and store the results in the
+    appropriate accumulation locations for the final MBE.
+    
+    There is a small amount of possible latency associated with storing the
+    gradients because we have to determine the right indices for each sub-system
+    and put the gradients there.
+    """
+    number_of_remaining_calculations::Int = sum(length.(all_subsystem_labels))
+    future_results = [Array{Future}(undef, length(all_subsystem_labels[i])) for i in 1:length(all_subsystem_labels)]
+    current_mbe_index::Int = 1
+    current_fragment_index::Int = 1
+
+    # stores the workerd id, mbe index, and fragment index for active job
+    active_job_array::Array{Tuple{Int, Int, Int}} = []
+    # Initialize all of the workers with a calculation
+    for pid in workers()
+        # spawn the next fragment calculation
+        future_results[current_mbe_index][current_fragment_index] = spawn_nwchem_mbe_job(nwchem, all_subsystem_coords[current_mbe_index][current_fragment_index], all_subsystem_labels[current_mbe_index][current_fragment_index], string("input_", current_mbe_index, "_", current_fragment_index, ".nw"), pid)
+        push!(active_job_array, (pid, current_mbe_index, current_fragment_index))
+
+        # increment the mbe index if all fragments at that order have been handled
+        # otherwise increment the fragment index
+        if current_fragment_index == length(all_subsystem_labels[current_mbe_index])
+            current_mbe_index += 1
+            current_fragment_index = 1
+        else
+            current_fragment_index += 1
+        end
+    end
+    # loop over all active jobs until they are all completed
+    while number_of_remaining_calculations != 0
+        for (job_index, (pid, mbe_index, fragment_index)) in enumerate(active_job_array)
+            if isready(future_results[mbe_index][fragment_index])
+                # spawn the new job and store the indices for this job
+                future_results[current_mbe_index][current_fragment_index] = spawn_nwchem_mbe_job(nwchem, all_subsystem_coords[current_mbe_index][current_fragment_index], all_subsystem_labels[current_mbe_index][current_fragment_index], string("input_", current_mbe_index, "_", current_fragment_index, ".nw"), pid)
+                active_job_array[job_index] = (pid, current_mbe_index, current_fragment_index)
+                # MAYBE WE ACYNCHRONOUSLY FETCH AND PROCESS DATA HERE??
+                # increment the mbe index if all fragments at that order have been handled
+                # otherwise increment the fragment index
+                if current_fragment_index == length(all_subsystem_labels[current_mbe_index])
+                    current_mbe_index += 1
+                    current_fragment_index = 1
+                else
+                    current_fragment_index += 1
+                end
+                number_of_remaining_calculations -= 1
+            end
+        end
+    end
+    # fetch all of the data and store at appropriate locations and process
+    # everything into final mbe stuff.
+end
+
+function spawn_nwchem_mbe_job(nwchem::NWChem, coords::Matrix{T}, labels::Vector{String}, input_file::String, pid::Int) where T <: AbstractFloat
+    """
+    Spawns an nwchem job at the specified process id and returns a future 
+    to the result. 
+    Notice that the NWChem struct can be modified so we can control how many 
+    processes are used when launching NWChem.
+    
+    All of the data passed to this function is also passed over to the 
+    corresponding process. If this turns out to be a problem producing too much 
+    latency, then we may want to consider converting to more of a 
+    queueing system where we deposit a whole bunch of tasks at each worker, 
+    and then if each worker runs out of jobs, it polls the other workers for 
+    available jobs.
+    """
+    return @spawnat pid get_energy_and_gradients(nwchem, coords, labels, string(splitext(input_file)[1], "_at_worker_", pid, ".nw"))
 end

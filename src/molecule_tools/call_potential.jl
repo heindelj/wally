@@ -300,9 +300,9 @@ function get_energy(nwchem::NWChem, coords::Vector{Matrix{T}}, atom_labels::Vect
     end
 end
 
-function get_energy_and_gradients(nwchem::NWChem, coords::Matrix{T}, atom_labels::Vector{String}, return_dict::Bool=false) where T <: AbstractFloat
+function get_energy_and_gradients(nwchem::NWChem, coords::Matrix{T}, atom_labels::Vector{String}, input_file_name::String="input_1.nw", return_dict::Bool=false) where T <: AbstractFloat
     set_task!(nwchem.nwchem_input, "gradient")
-    used_input_name::String = write_input_file(nwchem.nwchem_input, coords, atom_labels)
+    used_input_name::String = write_input_file(nwchem.nwchem_input, coords, atom_labels, input_file_name)
     output_name = string(splitext(used_input_name)[1], ".out")
     output_string = read(pipeline(`$(nwchem.executable_command) $used_input_name`), String)
     open(output_name, "w") do io
