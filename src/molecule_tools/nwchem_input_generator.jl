@@ -27,7 +27,13 @@ function write_input_file(input::NWChemInput, geoms::Vector{Matrix{T}}, atom_lab
     end
     
     if !isdir(out_directory)
-        mkdir(out_directory)
+        try 
+            mkdir(out_directory)
+        catch IOError
+            # if we get here it's because another process created the
+            # directory before we could. In which case, the directory
+            # exists and we can just use it so we do nothing.
+        end
     end
     used_input_name::String = next_unique_name(string(out_directory, "/", input_file_name))
     open(used_input_name, "w") do io

@@ -209,16 +209,9 @@ function get_energy_and_gradients(mbe_potential::MBEPotential{NWChem}, coords::A
     summed_gradients = [zeros((3, sum(size.(coords, 2)))) for _ in 1:mbe_potential.order]
     all_subsystems = get_many_body_geometries.((coords,), [1:mbe_potential.order...])
     all_subsystem_labels = get_many_body_geometries.((labels,), [1:mbe_potential.order...])
-    subsystem_energies = [[zero(Float64) for _ in 1:length(all_subsystems[i])] for i in 1:length(all_subsystems)]
-    subsystem_gradients = [zero.(all_subsystems[i]) for i in 1:length(all_subsystems)]
-    subsystem_names = [[string("input_", i, "_", j, ".nw") for j in 1:length(all_subsystems[i])] for i in 1:length(all_subsystems)]
-    # this works and avoids name collisions, but we don't seem to be getting the actual data back for some reason...
-    for i in length(all_subsystems):-1:1
-        @sync @distributed for j in 1:length(all_subsystems[i])
-            subsystem_energies[i][j], subsystem_gradients[i][j] = get_energy_and_gradients(mbe_potential.potential, all_subsystems[i][j], all_subsystem_labels[i][j], string("input_", i, "_", j, ".nw"))
-        end
-    end
-    println(subsystem_energies)
+    #subsystem_names = [[string("input_", i, "_", j, ".nw") for j in 1:length(all_subsystems[i])] for i in 1:length(all_subsystems)]
+
+    subsystem_energies, subsystem_gradients = poll_and_spawn_nwchem_mbe_calculations(mbe_potential.potential, all_subsystems, all_subsystem_labels, mbe_potential.order, length(labels))
 
     # now put the subsystem forces into the appropriate indices of total forces
     for i in 1:mbe_potential.order
@@ -240,7 +233,7 @@ function get_energy_and_gradients(mbe_potential::MBEPotential{NWChem}, coords::A
     end
 end
 
-function poll_and_spawn_nwchem_mbe_calculations(nwchem::NWChem, all_subsystem_coords::Vector{Matrix{T}}, all_subsystem_labels::Vector{Vector{String}}, max_mbe_order::Int, num_fragments::Int) where T <: AbstractFloat
+function poll_and_spawn_nwchem_mbe_calculations(nwchem::NWChem, all_subsystem_coords::Vector{Vector{Matrix{T}}}, all_subsystem_labels::Vector{Vector{Vector{String}}}, max_mbe_order::Int, num_fragments::Int) where T <: AbstractFloat
     """
     Polls all tasks spawned at workers to see if they are finished. If so,
     immediately spawn a new calculation for this worker to do and then fetch
@@ -251,15 +244,18 @@ function poll_and_spawn_nwchem_mbe_calculations(nwchem::NWChem, all_subsystem_co
     gradients because we have to determine the right indices for each sub-system
     and put the gradients there.
     """
-    number_of_remaining_calculations::Int = sum(length.(all_subsystem_labels))
+    number_of_calculations::Int = sum(length.(all_subsystem_labels))
     future_results = [Array{Future}(undef, length(all_subsystem_labels[i])) for i in 1:length(all_subsystem_labels)]
     current_mbe_index::Int = 1
     current_fragment_index::Int = 1
 
-    # stores the workerd id, mbe index, and fragment index for active job
+    # stores the worker id, mbe index, and fragment index for active job
     active_job_array::Array{Tuple{Int, Int, Int}} = []
+    
+    number_of_launched_calculations::Int = 0
     # Initialize all of the workers with a calculation
     for pid in workers()
+        number_of_launched_calculations += 1
         # spawn the next fragment calculation
         future_results[current_mbe_index][current_fragment_index] = spawn_nwchem_mbe_job(nwchem, all_subsystem_coords[current_mbe_index][current_fragment_index], all_subsystem_labels[current_mbe_index][current_fragment_index], string("input_", current_mbe_index, "_", current_fragment_index, ".nw"), pid)
         push!(active_job_array, (pid, current_mbe_index, current_fragment_index))
@@ -274,13 +270,14 @@ function poll_and_spawn_nwchem_mbe_calculations(nwchem::NWChem, all_subsystem_co
         end
     end
     # loop over all active jobs until they are all completed
-    while number_of_remaining_calculations != 0
+    while number_of_launched_calculations != number_of_calculations
         for (job_index, (pid, mbe_index, fragment_index)) in enumerate(active_job_array)
             if isready(future_results[mbe_index][fragment_index])
+                number_of_launched_calculations += 1
                 # spawn the new job and store the indices for this job
                 future_results[current_mbe_index][current_fragment_index] = spawn_nwchem_mbe_job(nwchem, all_subsystem_coords[current_mbe_index][current_fragment_index], all_subsystem_labels[current_mbe_index][current_fragment_index], string("input_", current_mbe_index, "_", current_fragment_index, ".nw"), pid)
                 active_job_array[job_index] = (pid, current_mbe_index, current_fragment_index)
-                # MAYBE WE ACYNCHRONOUSLY FETCH AND PROCESS DATA HERE??
+                # MAYBE WE ASYNCHRONOUSLY FETCH AND PROCESS DATA HERE??
                 # increment the mbe index if all fragments at that order have been handled
                 # otherwise increment the fragment index
                 if current_fragment_index == length(all_subsystem_labels[current_mbe_index])
@@ -289,12 +286,21 @@ function poll_and_spawn_nwchem_mbe_calculations(nwchem::NWChem, all_subsystem_co
                 else
                     current_fragment_index += 1
                 end
-                number_of_remaining_calculations -= 1
             end
         end
     end
     # fetch all of the data and store at appropriate locations and process
-    # everything into final mbe stuff.
+    # everything into final mbe energies and gradients.
+    subsystem_energies = [[zero(Float64) for _ in 1:length(all_subsystem_coords[i])] for i in 1:length(all_subsystem_coords)]
+    subsystem_gradients = [zero.(all_subsystem_coords[i]) for i in 1:length(all_subsystem_coords)]
+    for i in 1:length(future_results)
+        for j in 1:length(future_results[i])
+            data = fetch(future_results[i][j])
+            subsystem_energies[i][j] = data[1]
+            subsystem_gradients[i][j] = data[2]
+        end
+    end
+    return subsystem_energies, subsystem_gradients
 end
 
 function spawn_nwchem_mbe_job(nwchem::NWChem, coords::Matrix{T}, labels::Vector{String}, input_file::String, pid::Int) where T <: AbstractFloat
