@@ -259,6 +259,7 @@ NWChem(executable::String, basis::Dict{String, String}, theory::String) = NWChem
 NWChem(executable::String, basis::Dict{String, String}, theory::Vector{String}) = NWChem(executable, NWChemInput(basis, theory))
 NWChem(executable::String, basis::String, theory::String) = NWChem(executable, NWChemInput(basis, theory))
 NWChem(executable::String, basis::String, theory::Vector{String}) = NWChem(executable, NWChemInput(basis, theory))
+NWChem(nwchem::NWChem) = NWChem(nwchem.executable_command, NWChemInput(nwchem.nwchem_input.basis, nwchem.nwchem_input.theory))
 
 function get_energy(nwchem::NWChem, coords::Matrix{T}, atom_labels::Vector{String}, return_dict::Bool=false) where T <: AbstractFloat
     set_task!(nwchem.nwchem_input, "energy")

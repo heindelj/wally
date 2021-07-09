@@ -1,0 +1,11 @@
+echo
+memory 1000 mb
+geometry noautosym noautoz
+O 0.87715956 1.70409266 0.47858616
+H 1.70199937 1.19722607 0.29220265
+H 1.16181787 2.60891668 0.65546661
+end
+basis spherical
+ * library cc-pvdz
+end
+task scf gradient

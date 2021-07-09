@@ -6,6 +6,8 @@ struct MBEPotential{T} <: AbstractPotential
     order::Int
 end
 
+MBEPotential(mbe_potential::MBEPotential) = MBEPotential(typeof(mbe_potential.potential)(mbe_potential.potential), mbe_potential.order)
+
 function get_many_body_geometries(coords::AbstractArray, order::Int)
     """
     Builds an array of 3xN arrays where N is the number of atoms in each geometry
@@ -198,18 +200,22 @@ function get_energy_and_gradients(mbe_potential::MBEPotential, coords::AbstractV
     end
 end
 
-function get_energy_and_gradients(mbe_potential::MBEPotential{NWChem}, coords::AbstractVector{Matrix{T}}, labels::AbstractVector{Vector{String}}, return_mbe_data::Bool=false) where T <: AbstractFloat
+function get_energy_and_gradients(mbe_potential::MBEPotential{NWChem}, coords::AbstractVector{Matrix{T}}, labels::AbstractVector{Vector{String}}, return_mbe_data::Bool=false, return_order_n_only::Bool=false) where T <: AbstractFloat
     """
     Forms the n-body geometries and calls the nwchem potential belonging to
     mbe_potential on each of them to return the many-body energy and gradients.
     Note that coords is an array of sub-systems (the fragments).
+
+    if return_order_n_only is true, then only the mbe_potential.order data
+    will be returned. i.e. you will get back the 3-body energies and gradients
+    if that's the order of MBE requested. This takes precedent over returning
+    all MBE data.
     """
     @assert length(coords) == length(labels) "Fragment coordinates and labels are not the same length. The labels should be an array of arrays of all atom labels, as should the geometries."
     energies = zeros(mbe_potential.order)
     summed_gradients = [zeros((3, sum(size.(coords, 2)))) for _ in 1:mbe_potential.order]
     all_subsystems = get_many_body_geometries.((coords,), [1:mbe_potential.order...])
     all_subsystem_labels = get_many_body_geometries.((labels,), [1:mbe_potential.order...])
-    #subsystem_names = [[string("input_", i, "_", j, ".nw") for j in 1:length(all_subsystems[i])] for i in 1:length(all_subsystems)]
 
     subsystem_energies, subsystem_gradients = poll_and_spawn_nwchem_mbe_calculations(mbe_potential.potential, all_subsystems, all_subsystem_labels, mbe_potential.order, length(labels))
 
@@ -224,12 +230,74 @@ function get_energy_and_gradients(mbe_potential::MBEPotential{NWChem}, coords::A
     end
 
     mbe_gradient_data = get_mbe_data_from_subsystem_sums(summed_gradients, length(coords))
-    mbe_energy_data::Array{Float64, 1} = get_mbe_data_from_subsystem_sums(energies, length(coords))
+    mbe_energy_data   = get_mbe_data_from_subsystem_sums(energies, length(coords))
     
-    if return_mbe_data
+    if return_order_n_only
+        return mbe_energy_data[mbe_potential.order], mbe_gradient_data[mbe_potential.order]
+    elseif return_mbe_data
         return mbe_energy_data, mbe_gradient_data
     else
         return sum(mbe_energy_data), sum(mbe_gradient_data)
+    end
+end
+
+function get_energy_and_gradients(potential_dict::Dict{Int, MBEPotential}, coords::AbstractVector{Matrix{T}}, labels::AbstractVector{Vector{String}}, use_max_order_on_full_system::Bool=true) where T <: AbstractFloat
+    """
+    This calls the get_energy_and_gradients function for each method in the
+    mbe_potential_dict dictionary. We will first determine if some of the
+    calculations are redundant. That is, if you request "scf" for 3-body, then
+    we will check if 2-body is a post-HF method, in which case the energies
+    and gradients for the many-body part of the 3-body term will be taken from
+    the earlier calculations.
+
+    The option use_max_order_on_full_system means that if we only specify up
+    to 3-body, then we will calculate the entire system with this method and
+    calculate the 2-body MBE to obtain the 3- to N-body terms by subtraction.
+    """
+    # TODO: Give a worker pool to each potential and spawn each of these calculations separately on their own main thread (i.e. id's 2,3,4 would be the 1-, and 2-body, 3-body, and 4- to N-body). Each of these would get their own pool of workers (modify the function calls to allow this) to spawn the other tasks to.
+    all_mbe_orders = sort([keys(potential_dict)...])
+
+    mbe_energies = zeros(maximum_order - lowest_order + 1)
+    mbe_gradients = [zeros((3, sum(size.(coords, 2)))) for _ in 1:maximum_order - lowest_order + 1]
+
+    for (i, mbe_order) in all_mbe_orders
+        if mbe_order < maximum(all_mbe_orders)
+            @async mbe_energies[i], mbe_gradients[i] = typeof(potential_dict[mbe_order]) == NWChem ? get_energy_and_gradients(potential_dict[mbe_order], coords, labels) : get_energy_and_gradients(potential_dict[mbe_order], coords)
+        else
+
+            @async mbe_energies[i], mbe_gradients[i] = typeof(potential_dict[mbe_order]) == NWChem ? get_energy_and_gradients(potential_dict[mbe_order], coords, labels, false, true) : get_energy_and_gradients(potential_dict[mbe_order], coords, false, true)
+    end
+    return sum(mbe_energies), sum(mbe_gradients)
+end
+
+# THIS FUNCTION BELOW MIGHT BE A WASTE BECAUSE NWCHEM CURRENTLY DOES NOT DO
+# THE ANALYTIC GRADIENTS FOR SCF WHEN MP2 GRADIENTS ARE REQUESTED BECAUSE
+# IT DOESN'T HAVE TO. WE SHOULD VERIFY THIS IS ACTUALLY THE CASE THOUGH...
+function identify_necessary_mbe_tasks(mbe_potential_dict::Dict{Int, AbstractPotential}, theory_name::String)
+    """
+    Basically what needs to happen here is whenever something likes CCSD(T)
+    or MP2 appears in a lower-order term, but scf appears in a higher-order
+    term, I need to make sure we also explicitly calculate the gradients for
+    the scf calculations (to force NWChem to print them).
+    
+    I'm just going to explicitly do every case because there's not going to
+    be a clear and elegant way to do this so I'll just be explicit.
+    """
+    lowest_order  = minimum(keys(method_by_order))
+    nwchem_potentials::Dict{String, Int} = Dict()
+    for (mbe_order, potential) in pairs(mbe_potential_dict)
+        if typeof(potential) == NWChem 
+            @assert length(potential.theory) == 1 "Please only give one theory per nwchem potential for the MBE. The unique calculations will be determined and having multiple theories makes it ambiguous what calculations we should actually run."
+            nwchem_potentials[potential.theory[1]] = mbe_order
+        end
+    end    
+    if "scf" in keys(nwchem_potentials) && nwchem_potentials["scf"] > lowest_order
+        if "mp2" in keys(nwchem_potentials) && nwchem_potentials["mp2"] < nwchem_potentials["scf"]
+            push!(mbe_potential_dict[nwchem_potentials["mp2"]].nwchem_input.theory, "scf")
+        end
+        if "ccsd" in keys(nwchem_potentials) && nwchem_potentials["ccsd"] < nwchem_potentials["scf"]
+            push!(mbe_potential_dict[nwchem_potentials["ccsd"]].nwchem_input.theory, "scf")
+        end
     end
 end
 
@@ -303,7 +371,7 @@ function poll_and_spawn_nwchem_mbe_calculations(nwchem::NWChem, all_subsystem_co
     return subsystem_energies, subsystem_gradients
 end
 
-function spawn_nwchem_mbe_job(nwchem::NWChem, coords::Matrix{T}, labels::Vector{String}, input_file::String, pid::Int) where T <: AbstractFloat
+@inline function spawn_nwchem_mbe_job(nwchem::NWChem, coords::Matrix{T}, labels::Vector{String}, input_file::String, pid::Int) where T <: AbstractFloat
     """
     Spawns an nwchem job at the specified process id and returns a future 
     to the result. 
