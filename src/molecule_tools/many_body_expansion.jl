@@ -1,7 +1,7 @@
-using Combinatorics, Distributed, SharedArrays
+using Combinatorics, Distributed, UUIDs
 include("call_potential.jl")
 
-mutable struct MBEPotential{T} <: AbstractPotential
+struct MBEPotential{T} <: AbstractPotential
     potential::T
     order::Int
 end
@@ -241,7 +241,7 @@ function get_energy_and_gradients(mbe_potential::MBEPotential{NWChem}, coords::A
     end
 end
 
-function get_energy_and_gradients(potential_dict::Dict{Int, MBEPotential}, coords::AbstractVector{Matrix{T}}, labels::AbstractVector{Vector{String}}, available_workers::Vector{Int}=[1], use_max_order_on_full_system::Bool=true) where T <: AbstractFloat
+function get_energy_and_gradients(potential_dict::Dict{Int, <:AbstractPotential}, coords::AbstractVector{Matrix{T}}, labels::AbstractVector{Vector{String}}, available_workers::Vector{Int}=[1], use_max_order_on_full_system::Bool=true) where T <: AbstractFloat
     """
     This calls the get_energy_and_gradients function for each method in the
     mbe_potential_dict dictionary. We will first determine if some of the
@@ -261,30 +261,40 @@ function get_energy_and_gradients(potential_dict::Dict{Int, MBEPotential}, coord
     end
 
     # make all of the main threads and the workers associated with those threads
-    main_threads = [pop!(available_workers) for _ in 1:length(all_mbe_orders)]
-    nworkers::Int = length(available_workers)
-    worker_pools = [push!(main_threads[(i % length(main_threads)) + 1], pop!(available_workers)) for i in 1:nworkers]
-
-    future_energies_and_gradients  = [Future() for i in 1:length(all_subsystem_labels)]
-    if use_max_order_on_full_system
-        push!(future_energies_and_gradients, Future())
+    # TODO: Make this determine if the mbe order is NWChem (or some other method
+    # which parallelizes across workers) and only give the workers to them since
+    # all of the classical potentials don't do anything with workers.
+    worker_pools  = [Int[] for _ in 1:length(all_mbe_orders)]
+    num_workers::Int = length(available_workers)
+    for i in 1:num_workers
+        push!(worker_pools[(i % length(all_mbe_orders)) + 1], pop!(available_workers))
     end
 
-    for (i, mbe_order) in all_mbe_orders
-        if mbe_order < maximum(all_mbe_orders)
-            @spawnat main_threads[i] future_energies_and_gradients[i] = typeof(potential_dict[mbe_order]) == NWChem ? get_energy_and_gradients(potential_dict[mbe_order], coords, labels, available_workers, false, true) : get_energy_and_gradients(potential_dict[mbe_order], coords)
-        else
-            if use_max_order_on_full_system
-                potential_dict[mbe_order].order -= 1
-                @spawnat main_threads[i] future_energies_and_gradients[i] = typeof(potential_dict[mbe_order]) == NWChem ? get_energy_and_gradients(potential_dict[mbe_order], coords, labels, available_workers, false, true) : get_energy_and_gradients(potential_dict[mbe_order], coords, false, true)
-                @spawnat main_threads[i] future_energies_and_gradients[i+1] = typeof(potential_dict[mbe_order]) == NWChem ? get_energy_and_gradients(potential_dict[mbe_order].potential, hcat(coords...), labels, available_workers, false, true) : get_energy_and_gradients(potential_dict[mbe_order], hcat(coords...), false, true)
+    mbe_energies  = zeros(length(all_mbe_orders))
+    mbe_gradients = [zeros((3, sum(size.(coords, 2)))) for _ in 1:length(all_mbe_orders)]
+    if use_max_order_on_full_system
+        push!(mbe_energies, 0.0) 
+        push!(mbe_gradients, zeros((3, sum(size.(coords, 2))))) 
+    end
+
+    @sync begin
+        for (i, mbe_order) in enumerate(all_mbe_orders)
+            if mbe_order == minimum(all_mbe_orders)
+                @async mbe_energies[i], mbe_gradients[i] = typeof(potential_dict[mbe_order]) == NWChem ? get_energy_and_gradients(MBEPotential(potential_dict[mbe_order], mbe_order), coords, labels, worker_pools[i]) : get_energy_and_gradients(MBEPotential(potential_dict[mbe_order], mbe_order), coords)
+            elseif mbe_order < maximum(all_mbe_orders) && mbe_order > minimum(all_mbe_orders)
+                @async mbe_energies[i], mbe_gradients[i] = typeof(potential_dict[mbe_order]) == NWChem ? get_energy_and_gradients(MBEPotential(potential_dict[mbe_order], mbe_order), coords, labels, worker_pools[i], false, true) : get_energy_and_gradients(MBEPotential(potential_dict[mbe_order], mbe_order), coords)
             else
-                @spawnat main_threads[i] future_energies_and_gradients[i] = typeof(potential_dict[mbe_order]) == NWChem ? get_energy_and_gradients(potential_dict[mbe_order], coords, labels, available_workers, false, true) : get_energy_and_gradients(potential_dict[mbe_order], coords, false, true)
+                if use_max_order_on_full_system
+                    @async mbe_energies[i], mbe_gradients[i] = typeof(potential_dict[mbe_order]) == NWChem ? get_energy_and_gradients(MBEPotential(potential_dict[mbe_order], mbe_order-1), coords, labels, worker_pools[i]) : get_energy_and_gradients(MBEPotential(potential_dict[mbe_order], mbe_order-1), coords)
+                    @async mbe_energies[i+1], mbe_gradients[i+1] = typeof(potential_dict[mbe_order]) == NWChem ? get_energy_and_gradients(potential_dict[mbe_order], hcat(coords...), append!(String[], labels...), "full_calculation.nw") : get_energy_and_gradients(potential_dict[mbe_order], hcat(coords...))
+                else
+                    @async mbe_energies[i], mbe_gradients[i] = typeof(potential_dict[mbe_order]) == NWChem ? get_energy_and_gradients(MBEPotential(potential_dict[mbe_order], mbe_order), coords, labels, worker_pools[i], false, true) : get_energy_and_gradients(MBEPotential(potential_dict[mbe_order], mbe_order), coords, false, true)
+                end
             end
         end
     end
 
-    mbe_energies, mbe_gradients = collect(zip(fetch.(future_energies_and_gradients)...))
+    #mbe_energies, mbe_gradients = collect(zip(fetch.(future_energies_and_gradients)...))
     # get the difference from full system calculation with mbe up to max_order-1 and
     # add to the sum of everything up to that point
     if use_max_order_on_full_system
@@ -343,7 +353,6 @@ function poll_and_spawn_nwchem_mbe_calculations(nwchem::NWChem, all_subsystem_co
     # them in the available workers array and assigning them a calculation to carry out
     # We will need to be careful about the whole pid thing, but I think just pushing the
     # new worker ids into the array will already work...
-
 
     # If we only have the main thread, then add workers to handle the tasks
     lock(l)
@@ -417,7 +426,7 @@ function poll_and_spawn_nwchem_mbe_calculations(nwchem::NWChem, all_subsystem_co
     return subsystem_energies, subsystem_gradients
 end
 
-@inline function spawn_nwchem_mbe_job(nwchem::NWChem, coords::Matrix{T}, labels::Vector{String}, input_file::String, pid::Int) where T <: AbstractFloat
+@inline function spawn_nwchem_mbe_job(nwchem::NWChem, coords::Matrix{T}, labels::Vector{String}, input_file::String, pid::Int, ) where T <: AbstractFloat
     """
     Spawns an nwchem job at the specified process id and returns a future 
     to the result. 
@@ -431,5 +440,5 @@ end
     and then if each worker runs out of jobs, it polls the other workers for 
     available jobs.
     """
-    return @spawnat pid get_energy_and_gradients(nwchem, coords, labels, string(splitext(input_file)[1], "_", nwchem.nwchem_input.theory[1], "_", nwchem.nwchem_input.basis, "_at_worker_", pid, ".nw"))
+    return @spawnat pid get_energy_and_gradients(nwchem, coords, labels, string(splitext(input_file)[1], "_", nwchem.nwchem_input.theory[1], "_", string(values(nwchem.nwchem_input.basis)...), "_at_worker_", pid, "_", string(UUIDs.uuid4()), ".nw"))
 end
