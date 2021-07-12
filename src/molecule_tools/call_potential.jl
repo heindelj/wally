@@ -261,7 +261,7 @@ NWChem(executable::String, basis::String, theory::String) = NWChem(executable, N
 NWChem(executable::String, basis::String, theory::Vector{String}) = NWChem(executable, NWChemInput(basis, theory))
 NWChem(nwchem::NWChem) = NWChem(nwchem.executable_command, NWChemInput(nwchem.nwchem_input.basis, nwchem.nwchem_input.theory))
 
-function get_energy(nwchem::NWChem, coords::Matrix{T}, atom_labels::Vector{String}, input_file_name::String="input_1.nw", output_directory::String="nwchem" return_dict::Bool=false) where T <: AbstractFloat
+function get_energy(nwchem::NWChem, coords::Matrix{T}, atom_labels::Vector{String}, input_file_name::String="input_1.nw", output_directory::String="nwchem", return_dict::Bool=false) where T <: AbstractFloat
     set_task!(nwchem.nwchem_input, "energy")
     used_input_name::String = write_input_file(nwchem.nwchem_input, coords, atom_labels, input_file_name, output_directory)
     output_name = string(splitext(used_input_name)[1], ".out")
