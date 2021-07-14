@@ -89,14 +89,14 @@ function get_energy(mbe_potential::MBEPotential, coords::AbstractVector{Matrix{T
     # iterate backwards so the more expensive calculations get queued first.
     if copy_construct_potential
         for i in length(all_subsystems):-1:1
-            energies[i] = @distributed (+) for j in 1:length(all_subsystems[i])
-                get_energy(typeof(mbe_potential.potential)(mbe_potential.potential), all_subsystems[i][j]; kwargs...)
+            for j in 1:length(all_subsystems[i])
+                energies[i] += get_energy(typeof(mbe_potential.potential)(mbe_potential.potential), all_subsystems[i][j]; kwargs...)
             end
         end
     else
         for i in length(all_subsystems):-1:1
-            energies[i] = @distributed (+) for j in 1:length(all_subsystems[i])
-                get_energy(mbe_potential.potential, all_subsystems[i][j]; kwargs...)
+            for j in 1:length(all_subsystems[i])
+                energies[i] += get_energy(mbe_potential.potential, all_subsystems[i][j]; kwargs...)
             end
         end
     end
@@ -377,7 +377,7 @@ function poll_and_spawn_nwchem_mbe_calculations(nwchem::NWChem, all_subsystem_co
     
     number_of_launched_calculations::Int = 0
     # Initialize all of the workers with a calculation (up to number of jobs)
-    for i in 1:length(future_results)
+    for i in 1:number_of_calculations
         number_of_launched_calculations += 1
         # spawn the next fragment calculation
         future_results[current_mbe_index][current_fragment_index] = spawn_nwchem_mbe_job(nwchem, all_subsystem_coords[current_mbe_index][current_fragment_index], all_subsystem_labels[current_mbe_index][current_fragment_index], string("input_", current_mbe_index, "_", current_fragment_index, ".nw"), worker_pool[i])
@@ -425,7 +425,7 @@ function poll_and_spawn_nwchem_mbe_calculations(nwchem::NWChem, all_subsystem_co
     return subsystem_energies, subsystem_gradients
 end
 
-@inline function spawn_nwchem_mbe_job(nwchem::NWChem, coords::Matrix{T}, labels::Vector{String}, input_file::String, pid::Int, ) where T <: AbstractFloat
+@inline function spawn_nwchem_mbe_job(nwchem::NWChem, coords::Matrix{T}, labels::Vector{String}, input_file::String, pid::Int) where T <: AbstractFloat
     """
     Spawns an nwchem job at the specified process id and returns a future 
     to the result. 
