@@ -41,13 +41,15 @@ function parse_gradients(output_file_lines::Vector{String})
         if possible_key != ""
             num_atoms::Int = 0
             j::Int = 0
-            while output_file_lines[i+j+4] != ""
+            while strip(output_file_lines[i+j+4]) != ""
                 num_atoms += 1
                 j += 1
             end
             grads = zeros(3, num_atoms)
             j = 0
-            while output_file_lines[i+j+4] != ""
+            
+            # Now do the same loop again and store the actual gradients
+            while strip(output_file_lines[i+j+4]) != ""
                 grads[:, j+1] = parse.(Float64, split(output_file_lines[i+j+4])[end-2:end])
                 j += 1
             end

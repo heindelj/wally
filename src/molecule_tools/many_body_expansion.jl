@@ -89,14 +89,14 @@ function get_energy(mbe_potential::MBEPotential, coords::AbstractVector{Matrix{T
     # iterate backwards so the more expensive calculations get queued first.
     if copy_construct_potential
         for i in length(all_subsystems):-1:1
-            energies[i] = @distributed (+) for j in 1:length(all_subsystems[i])
-                get_energy(typeof(mbe_potential.potential)(mbe_potential.potential), all_subsystems[i][j]; kwargs...)
+            for j in 1:length(all_subsystems[i])
+                energies[i] += get_energy(typeof(mbe_potential.potential)(mbe_potential.potential), all_subsystems[i][j]; kwargs...)
             end
         end
     else
         for i in length(all_subsystems):-1:1
-            energies[i] = @distributed (+) for j in 1:length(all_subsystems[i])
-                get_energy(mbe_potential.potential, all_subsystems[i][j]; kwargs...)
+            for j in 1:length(all_subsystems[i])
+                energies[i] += get_energy(mbe_potential.potential, all_subsystems[i][j]; kwargs...)
             end
         end
     end
@@ -254,7 +254,6 @@ function get_energy_and_gradients(potential_dict::Dict{Int, <:AbstractPotential}
     to 3-body, then we will calculate the entire system with this method and
     calculate the 2-body MBE to obtain the 3- to N-body terms by subtraction.
     """
-    # TODO: Give a worker pool to each potential and spawn each of these calculations separately on their own main thread (i.e. id's 2,3,4 would be the 1-, and 2-body, 3-body, and 4- to N-body). Each of these would get their own pool of workers (modify the function calls to allow this) to spawn the other tasks to.
     all_mbe_orders = sort([keys(potential_dict)...])
     if length(available_workers) < length(all_mbe_orders)
         # return by running the serial version here
@@ -377,12 +376,12 @@ function poll_and_spawn_nwchem_mbe_calculations(nwchem::NWChem, all_subsystem_co
     active_job_array::Array{Tuple{Int, Int, Int}} = []
     
     number_of_launched_calculations::Int = 0
-    # Initialize all of the workers with a calculation
-    for pid in worker_pool
+    # Initialize all of the workers with a calculation (up to number of jobs)
+    for i in 1:number_of_calculations
         number_of_launched_calculations += 1
         # spawn the next fragment calculation
-        future_results[current_mbe_index][current_fragment_index] = spawn_nwchem_mbe_job(nwchem, all_subsystem_coords[current_mbe_index][current_fragment_index], all_subsystem_labels[current_mbe_index][current_fragment_index], string("input_", current_mbe_index, "_", current_fragment_index, ".nw"), pid)
-        push!(active_job_array, (pid, current_mbe_index, current_fragment_index))
+        future_results[current_mbe_index][current_fragment_index] = spawn_nwchem_mbe_job(nwchem, all_subsystem_coords[current_mbe_index][current_fragment_index], all_subsystem_labels[current_mbe_index][current_fragment_index], string("input_", current_mbe_index, "_", current_fragment_index, ".nw"), worker_pool[i])
+        push!(active_job_array, (worker_pool[i], current_mbe_index, current_fragment_index))
 
         # increment the mbe index if all fragments at that order have been handled
         # otherwise increment the fragment index
@@ -426,7 +425,7 @@ function poll_and_spawn_nwchem_mbe_calculations(nwchem::NWChem, all_subsystem_co
     return subsystem_energies, subsystem_gradients
 end
 
-@inline function spawn_nwchem_mbe_job(nwchem::NWChem, coords::Matrix{T}, labels::Vector{String}, input_file::String, pid::Int, ) where T <: AbstractFloat
+@inline function spawn_nwchem_mbe_job(nwchem::NWChem, coords::Matrix{T}, labels::Vector{String}, input_file::String, pid::Int) where T <: AbstractFloat
     """
     Spawns an nwchem job at the specified process id and returns a future 
     to the result. 
