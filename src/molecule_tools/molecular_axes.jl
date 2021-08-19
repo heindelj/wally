@@ -11,6 +11,76 @@ function center_of_mass_distance(sub_structure::AbstractMatrix, sub_structure_ma
     return norm(center_of_mass(sub_structure, sub_structure_masses) - center_of_mass(full_structure, full_structure_masses))
 end
 
+#############################################
+### CARTESIAN TO INTERNALS AND BACK AGAIN ###
+#############################################
+
+function angle(r_12::AbstractVector, r_23::AbstractVector)
+    return acosd((r_12 ⋅r_23)/(norm(r_12) * norm(r_23)))
+end
+
+function dihedral_angle(r_12::AbstractVector, r_23::AbstractVector, r_34::AbstractVector)
+    """ See: https://math.stackexchange.com/questions/47059/how-do-i-calculate-a-dihedral-angle-given-cartesian-coordinates """
+    r_12 /= norm(r_12)
+    r_23 /= norm(r_23)
+    r_34 /= norm(r_34)
+
+    n1 = cross(r_12, r_23)
+    n2 = cross(r_23, r_34)
+    m1 = cross(n1, r_23)
+    return atand(m1 ⋅n2, n1 ⋅n2)
+end
+
+function zmat_to_string(zmat::Vector{Vector{Tuple{Int, Float64}}}, labels::Vector{String})
+    @assert length(labels) == length(zmat) "Number of atom labels and z-matrix entries are not equal."
+    complete_string = ""
+    for i in 1:length(zmat)
+        complete_string = string(complete_string, labels[i])
+        for j in 1:length(zmat[i])
+            if zmat[i][j][1] != 0
+                complete_string = string(complete_string, " ", zmat[i][j][1], " ", zmat[i][j][2])
+            else
+                continue
+            end
+        end
+        complete_string = string(complete_string, "\n")
+    end
+    return complete_string
+end
+
+function xyz_to_zmat(coords::Matrix{<:AbstractFloat})
+    """
+    Converts a matrix of cartesian coordinates into a zmatrix.
+    Each entry in the zmatrix is stored as a Tuple{Int, Float64} where the Int says which atom
+    this entry is relative to, and the Float64 is the value of that entry (distance, angle, or dihedral).
+    Every atom will have three entries, and the integer will be a zero if that entry should be ignored.
+    That is, the first atom will have [(0, 0.0), (0, 0.0), (0, 0.0)], while the second atom
+    will have a valid entry for the first element in this vector.
+    The whole zmatrix is returned as a Vector{Vector{Tuple{Int, Float64}}}
+    """
+    zmat::Vector{Vector{Tuple{Int, Float64}}} = [[(0, 0.0) for _ in 1:3] for _ in 1:size(coords, 2)]
+    for i_atom in 1:size(coords, 2)
+        if i_atom == 1
+            continue
+        elseif i_atom == 2
+            zmat[i_atom][1] = (i_atom-1, norm(coords[:, i_atom] - coords[:, i_atom-1]))
+        elseif i_atom == 3
+            zmat[i_atom][1] = (i_atom-1, norm(coords[:, i_atom] - coords[:, i_atom-1]))
+            zmat[i_atom][2] = (i_atom-2, 180.0 - angle(coords[:, i_atom] - coords[:, i_atom-1], coords[:, i_atom-1] - coords[:, i_atom-2]))
+        else
+            # bond distance
+            zmat[i_atom][1] = (i_atom-1, norm(coords[:, i_atom] - coords[:, i_atom-1]))
+
+            # bond angle
+            zmat[i_atom][2] = (i_atom-2, 180.0 - angle(coords[:, i_atom] - coords[:, i_atom-1], coords[:, i_atom-1] - coords[:, i_atom-2]))
+            
+            # dihedral angle
+            zmat[i_atom][3] = (i_atom-3, dihedral_angle(coords[:, i_atom] - coords[:, i_atom-1], coords[:, i_atom-1] - coords[:, i_atom-2], coords[:, i_atom-2] - coords[:, i_atom-3]))   
+        end
+    end
+    return zmat
+end
+
 ### KABSCH CODE ADAPTED FROM BIOMOLECULARSTRUCTURES.jl https://github.com/hng/BiomolecularStructures.jl/blob/master/src/KABSCH/kabsch.jl ###
 
 
