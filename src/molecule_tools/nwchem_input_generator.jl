@@ -75,7 +75,11 @@ function set_settings_string!(input::NWChemInput)
 end
 
 function set_header_string!(input::NWChemInput)
-    input.header_string = string("echo\n", get_memory_string(input))
+    input.header_string = string("echo\n", get_memory_string(input), input.header_string)
+end
+
+function set_header_options!(input::NWChemInput, settings::String)
+    input.header_string = string(input.header_string, settings)
 end
 
 function set_basis!(input::NWChemInput, basis::Union{String, Dict{String, String}})
@@ -157,7 +161,11 @@ function get_block_strings(input::NWChemInput)
 end
 
 function set_special_settings!(input::NWChemInput, setting::Union{String, Vector{String}})
-    append!(input.special_settings, setting)
+    if typeof(setting) <: AbstractVector
+        append!(input.special_settings, setting)
+    else
+        push!(input.special_settings, setting)
+    end
 end
 
 function get_special_settings(input::NWChemInput)
