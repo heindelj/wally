@@ -267,11 +267,9 @@ function get_energy(nwchem::NWChem, coords::Matrix{T}, atom_labels::Vector{Strin
     set_task!(nwchem.nwchem_input, "energy")
     used_input_name::String = write_input_file(nwchem.nwchem_input, coords, atom_labels, input_file_name, output_directory)
     output_name = string(splitext(used_input_name)[1], ".out")
-    output_string = read(pipeline(`$nwchem.executable_command $used_input_name '&'`), String)
-    open(output_name, "w") do io
-        write(io, output_string)
-    end
-    nwchem_output = string.(split(output_string, '\n'))
+    run(`$(nwchem.executable_command) $used_input_name '>' output_name '&'`) 
+    # the above blocks until the job is finished which is what we want so we can read in the file on the next line
+    nwchem_output = readlines(output_name)
     
     energies = parse_energies(nwchem_output)
     if return_dict
@@ -287,11 +285,9 @@ function get_energy(nwchem::NWChem, coords::Vector{Matrix{T}}, atom_labels::Vect
     set_task!(nwchem.nwchem_input, "energy")
     used_input_name::String = write_input_file(nwchem.nwchem_input, coords, atom_labels, input_file_name, output_directory)
     output_name = string(splitext(used_input_name)[1], ".out")
-    output_string = read(pipeline(`$(nwchem.executable_command) $used_input_name '&'`), String)
-    open(output_name, "w") do io
-        write(io, output_string)
-    end
-    nwchem_output = string.(split(output_string, '\n'))
+    run(`$(nwchem.executable_command) $used_input_name '>' output_name '&'`) 
+    # the above blocks until the job is finished which is what we want so we can read in the file on the next line
+    nwchem_output = readlines(output_name)
     
     energies = parse_energies(nwchem_output)
     if return_dict
@@ -307,11 +303,11 @@ function get_energy_and_gradients(nwchem::NWChem, coords::Matrix{T}, atom_labels
     set_task!(nwchem.nwchem_input, "gradient")
     used_input_name::String = write_input_file(nwchem.nwchem_input, coords, atom_labels, input_file_name, output_directory)
     output_name = string(splitext(used_input_name)[1], ".out")
-    println(string(nwchem.executable_command, " ", used_input_name, " ", "&"))
     output_string = read(pipeline(`$(nwchem.executable_command) $used_input_name '&'`), String)
     open(output_name, "w") do io
         write(io, output_string)
     end
+    # the above blocks until the job is finished which is what we want so we can read in the file on the next line
     nwchem_output = string.(split(output_string, '\n'))
     
     energies  = parse_energies(nwchem_output)
@@ -330,11 +326,9 @@ function get_energy_and_gradients(nwchem::NWChem, coords::Vector{Matrix{T}}, ato
     used_input_name::String = write_input_file(nwchem.nwchem_input, coords, atom_labels)
     used_input_name = string(pwd(), used_input_name)
     output_name = string(splitext(used_input_name)[1], ".out")
-    output_string = read(pipeline(`$nwchem.executable_command $used_input_name`), String)
-    open(output_name, "w") do io
-        write(io, output_string)
-    end
-    nwchem_output = string.(split(output_string, '\n'))
+    run(`$(nwchem.executable_command) $used_input_name '>' output_name '&'`) 
+    # the above blocks until the job is finished which is what we want so we can read in the file on the next line
+    nwchem_output = readlines(output_name)
     
     energies  = parse_energies(nwchem_output)
     gradients = parse_gradients(nwchem_output)

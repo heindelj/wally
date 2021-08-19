@@ -285,7 +285,7 @@ function get_energy_and_gradients(potential_dict::Dict{Int, <:AbstractPotential}
             else
                 if use_max_order_on_full_system
                     @async mbe_energies[i], mbe_gradients[i] = typeof(potential_dict[mbe_order]) == NWChem ? get_energy_and_gradients(MBEPotential(potential_dict[mbe_order], mbe_order-1), coords, labels, worker_pools[i]) : get_energy_and_gradients(MBEPotential(potential_dict[mbe_order], mbe_order-1), coords)
-                    @async mbe_energies[i+1], mbe_gradients[i+1] = typeof(potential_dict[mbe_order]) == NWChem ? get_energy_and_gradients(potential_dict[mbe_order], hcat(coords...), append!(String[], labels...), "full_calculation.nw") : get_energy_and_gradients(potential_dict[mbe_order], hcat(coords...))
+                    mbe_energies[i+1], mbe_gradients[i+1] = typeof(potential_dict[mbe_order]) == NWChem ? fetch(spawn_nwchem_mbe_job(potential_dict[mbe_order], hcat(coords...), append!(String[], labels...), "full_calculation.nw", 2)) : get_energy_and_gradients(potential_dict[mbe_order], hcat(coords...))
                 else
                     @async mbe_energies[i], mbe_gradients[i] = typeof(potential_dict[mbe_order]) == NWChem ? get_energy_and_gradients(MBEPotential(potential_dict[mbe_order], mbe_order), coords, labels, worker_pools[i], false, true) : get_energy_and_gradients(MBEPotential(potential_dict[mbe_order], mbe_order), coords, false, true)
                 end
@@ -315,7 +315,7 @@ function identify_necessary_mbe_tasks(mbe_potential_dict::Dict{Int, AbstractPote
     I'm just going to explicitly do every case because there's not going to
     be a clear and elegant way to do this so I'll just be explicit.
     """
-    lowest_order  = minimum(keys(method_by_order))
+    lowest_order = minimum(keys(method_by_order))
     nwchem_potentials::Dict{String, Int} = Dict()
     for (mbe_order, potential) in pairs(mbe_potential_dict)
         if typeof(potential) == NWChem 
