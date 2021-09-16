@@ -166,15 +166,16 @@ function get_energy_and_gradients(mbe_potential::MBEPotential, coords::AbstractV
     all_subsystems = get_many_body_geometries.((coords,), [1:mbe_potential.order...])
     subsystem_energies = [[zero(Float64) for _ in 1:length(all_subsystems[i])] for i in 1:length(all_subsystems)]
     subsystem_gradients = [zero.(all_subsystems[i]) for i in 1:length(all_subsystems)]
+    # Need to switch to pmap and fetching the futures for parallelization
     if copy_construct_potential
         for i in length(all_subsystems):-1:1
-            @sync @distributed for j in 1:length(all_subsystems[i])
+            for j in 1:length(all_subsystems[i])
                 subsystem_energies[i][j], subsystem_gradients[i][j] = get_energy_and_gradients(typeof(mbe_potential.potential)(mbe_potential.potential), all_subsystems[i][j]; kwargs...)
             end
         end
     else
         for i in length(all_subsystems):-1:1
-            @sync @distributed for j in 1:length(all_subsystems[i])
+            for j in 1:length(all_subsystems[i])
                 subsystem_energies[i][j], subsystem_gradients[i][j] = get_energy_and_gradients(mbe_potential.potential, all_subsystems[i][j]; kwargs...)
             end
         end
@@ -279,12 +280,12 @@ function get_energy_and_gradients(potential_dict::Dict{Int, <:AbstractPotential}
     @sync begin
         for (i, mbe_order) in enumerate(all_mbe_orders)
             if mbe_order == minimum(all_mbe_orders)
-                @async mbe_energies[i], mbe_gradients[i] = typeof(potential_dict[mbe_order]) == NWChem ? get_energy_and_gradients(MBEPotential(potential_dict[mbe_order], mbe_order), coords, labels, worker_pools[i]) : get_energy_and_gradients(MBEPotential(potential_dict[mbe_order], mbe_order), coords)
+                @async mbe_energies[i], mbe_gradients[i] = typeof(potential_dict[mbe_order]) == NWChem ? get_energy_and_gradients(MBEPotential(potential_dict[mbe_order], mbe_order), coords, labels, worker_pools[i]) : get_energy_and_gradients(MBEPotential(potential_dict[mbe_order], mbe_order), coords, false, true)
             elseif mbe_order < maximum(all_mbe_orders) && mbe_order > minimum(all_mbe_orders)
-                @async mbe_energies[i], mbe_gradients[i] = typeof(potential_dict[mbe_order]) == NWChem ? get_energy_and_gradients(MBEPotential(potential_dict[mbe_order], mbe_order), coords, labels, worker_pools[i], false, true) : get_energy_and_gradients(MBEPotential(potential_dict[mbe_order], mbe_order), coords)
+                @async mbe_energies[i], mbe_gradients[i] = typeof(potential_dict[mbe_order]) == NWChem ? get_energy_and_gradients(MBEPotential(potential_dict[mbe_order], mbe_order), coords, labels, worker_pools[i], false, true) : get_energy_and_gradients(MBEPotential(potential_dict[mbe_order], mbe_order), coords, false, true)
             else
                 if use_max_order_on_full_system
-                    @async mbe_energies[i], mbe_gradients[i] = typeof(potential_dict[mbe_order]) == NWChem ? get_energy_and_gradients(MBEPotential(potential_dict[mbe_order], mbe_order-1), coords, labels, worker_pools[i]) : get_energy_and_gradients(MBEPotential(potential_dict[mbe_order], mbe_order-1), coords)
+                    @async mbe_energies[i], mbe_gradients[i] = typeof(potential_dict[mbe_order]) == NWChem ? get_energy_and_gradients(MBEPotential(potential_dict[mbe_order], mbe_order-1), coords, labels, worker_pools[i]) : get_energy_and_gradients(MBEPotential(potential_dict[mbe_order], mbe_order-1), coords, false, true)
                     mbe_energies[i+1], mbe_gradients[i+1] = typeof(potential_dict[mbe_order]) == NWChem ? fetch(spawn_nwchem_mbe_job(potential_dict[mbe_order], hcat(coords...), append!(String[], labels...), "full_calculation.nw", 2)) : get_energy_and_gradients(potential_dict[mbe_order], hcat(coords...))
                 else
                     @async mbe_energies[i], mbe_gradients[i] = typeof(potential_dict[mbe_order]) == NWChem ? get_energy_and_gradients(MBEPotential(potential_dict[mbe_order], mbe_order), coords, labels, worker_pools[i], false, true) : get_energy_and_gradients(MBEPotential(potential_dict[mbe_order], mbe_order), coords, false, true)
