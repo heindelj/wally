@@ -381,8 +381,8 @@ function poll_and_spawn_nwchem_mbe_calculations(nwchem::NWChem, all_subsystem_co
     for i in 1:number_of_calculations
         number_of_launched_calculations += 1
         # spawn the next fragment calculation
-        future_results[current_mbe_index][current_fragment_index] = spawn_nwchem_mbe_job(nwchem, all_subsystem_coords[current_mbe_index][current_fragment_index], all_subsystem_labels[current_mbe_index][current_fragment_index], string("input_", current_mbe_index, "_", current_fragment_index, ".nw"), worker_pool[i])
-        push!(active_job_array, (worker_pool[i], current_mbe_index, current_fragment_index))
+        future_results[current_mbe_index][current_fragment_index] = spawn_nwchem_mbe_job(nwchem, all_subsystem_coords[current_mbe_index][current_fragment_index], all_subsystem_labels[current_mbe_index][current_fragment_index], string("input_", current_mbe_index, "_", current_fragment_index, ".nw"), worker_pool[i%length(worker_pool)+1])
+        push!(active_job_array, (worker_pool[i%length(worker_pool)+1], current_mbe_index, current_fragment_index))
 
         # increment the mbe index if all fragments at that order have been handled
         # otherwise increment the fragment index
