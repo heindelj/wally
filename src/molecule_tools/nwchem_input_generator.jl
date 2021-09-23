@@ -18,7 +18,9 @@ NWChemInput(basis::String, theory::String) = NWChemInput(basis = Dict("*" => bas
 NWChemInput(basis::String, theory::Vector{String}) = NWChemInput(basis = Dict("*" => basis), theory = lowercase.(theory))
 
 function write_input_file(input::NWChemInput, geoms::Vector{Matrix{T}}, atom_labels::Vector{Vector{String}}, input_file_name::String="input.nw", out_directory::String="nwchem") where T <: AbstractFloat
-    set_header_string!(input)
+    if input.header_string == ""
+        set_header_string!(input)
+    end
     set_geometry_string!(input, geoms, atom_labels)
     set_settings_string!(input)
     input_file::String = input.header_string 
@@ -45,6 +47,41 @@ end
 function write_input_file(input::NWChemInput, geoms::Matrix{T}, atom_labels::Vector{String}, input_file_name::String="input.nw", out_directory::String="nwchem") where T <: AbstractFloat
     used_input_name = write_input_file(input, [geoms], [atom_labels], input_file_name, out_directory)
     return used_input_name
+end
+
+function write_bsse_input_files(input::NWChemInput, geoms::Vector{Matrix{T}}, atom_labels::Vector{Vector{String}}, input_file_name::String="input.nw", out_directory::String="nwchem") where T <: AbstractFloat
+    """
+    Takes a vector of geoms and atom labels which are treated as fragments in a supermolecule. These are used to generate the various input files needed to calculate a counter-poise correction (for a dimer) or a site-site function counterpoise correction (for more than two fragments).
+    """
+    all_input_file_names = ["" for _ in 1:(2*length(geoms)+1)]
+    # write the input for the full calculation
+    all_input_file_names[1] = string(pwd(), "/", write_input_file(input, hcat(geoms...), vcat(atom_labels...), "full_supermolecule_input.nw"))
+
+    # write the input files for the isolated monomer calculations
+    for i in 1:length(geoms)
+        all_input_file_names[i+1] = string(pwd(), "/", write_input_file(input, geoms[i], atom_labels[i], string("monomer_input_", i, ".nw")))
+    end
+
+    # write the input files for the monomer + ghost orbitals calculations
+    for i in 1:length(geoms)
+        # update the labels with bq for ghost functions and 
+        # add label to basis dict if missing. All bq centers use same basis for now.
+        ghost_labels = copy.(atom_labels)
+        for j in 1:length(atom_labels)
+            if j != i
+                for k in 1:length(atom_labels[j])
+                    ghost_labels[j][k] = string("bq", atom_labels[j][k])
+                    if haskey(input.basis, atom_labels[j][k])
+                        input.basis[ghost_labels[j][k]] = string(atom_labels[j][k], " ", input.basis[atom_labels[j][k]])
+                    else
+                        input.basis[ghost_labels[j][k]] = string(atom_labels[j][k], " ",  input.basis["*"])
+                    end
+                end
+            end
+        end
+        all_input_file_names[i+length(geoms)+1] = string(pwd(), "/", write_input_file(input, hcat(geoms...), vcat(ghost_labels...), string("monomer_plus_ghost_functions_input_", i, ".nw")))
+    end
+    return all_input_file_names
 end
 
 function next_unique_name(file_name::String, i::Int=1)
