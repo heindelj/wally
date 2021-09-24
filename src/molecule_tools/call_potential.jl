@@ -347,33 +347,26 @@ function get_bsse_corrected_energy(nwchem::NWChem, coords::Vector{Matrix{T}}, at
     """
     Takes an NWChem struct and writes the appropriate input files to calculate the BSSE-corrected energy of a supermolecule. Each fragment should be contained in the array of matrices and the associated atom labels in atom_labels.
     """
-    worker_pool = workers()
-    if nworkers() == 1
-        addprocs(2*length(coords)+1)
-        worker_pool = workers()
-        @everywhere worker_pool include(@__FILE__)
-    end
     set_task!(nwchem.nwchem_input, "energy")
     used_input_names = write_bsse_input_files(nwchem.nwchem_input, coords, atom_labels)
     output_names = [string(splitext(used_input_names[i])[1], ".out") for i in 1:length(used_input_names)]
     
-    # spawn the calculations at various workers
-    output_string_futures = Array{Future}(undef, length(output_names))
+    output_strings = Array{String}(undef, length(output_names))
     @sync for i in 1:length(output_names)
-        output_string_futures[i] = @spawnat worker_pool[i] read(pipeline(`$(nwchem.executable_command) $(used_input_names[i]) '&'`), String)
+        @async output_strings[i] = read(pipeline(`$(nwchem.executable_command) $(used_input_names[i]) '&'`), String)
     end
 
     # write out the the results for future reference
-    for i in 1:length(output_string_futures)
+    for i in 1:length(output_strings)
         open(output_names[i], "w") do io
-            write(io, fetch(output_string_futures[i]))
+            write(io, output_strings[i])
         end
     end
     # the above blocks until the job is finished which is what we want so we can read in the file on the next line
     nwchem_outputs = readlines.(output_names)
     
     all_energies = [parse_energies(nwchem_outputs[i])[nwchem.nwchem_input.theory[1]][1] for i in 1:length(nwchem_outputs)]
-    # now combine everything into one bsse-corrected energy!
-    return all_energies
+    # now combine everything into one bsse-corrected energy
+    return @views(all_energies[1] + sum(all_energies[2:(length(coords)+1)] - all_energies[(length(coords)+2):(2*length(coords)+1)]))
 end
 
