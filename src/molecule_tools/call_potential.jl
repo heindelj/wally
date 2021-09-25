@@ -362,7 +362,6 @@ function get_bsse_corrected_energy(nwchem::NWChem, coords::Vector{Matrix{T}}, at
             write(io, output_strings[i])
         end
     end
-    # the above blocks until the job is finished which is what we want so we can read in the file on the next line
     nwchem_outputs = readlines.(output_names)
     
     all_energies = [parse_energies(nwchem_outputs[i])[nwchem.nwchem_input.theory[1]][1] for i in 1:length(nwchem_outputs)]
@@ -370,3 +369,35 @@ function get_bsse_corrected_energy(nwchem::NWChem, coords::Vector{Matrix{T}}, at
     return @views(all_energies[1] + sum(all_energies[2:(length(coords)+1)] - all_energies[(length(coords)+2):(2*length(coords)+1)]))
 end
 
+function get_bsse_corrected_energy_and_gradients(nwchem::NWChem, coords::Vector{Matrix{T}}, atom_labels::Vector{Vector{String}}) where T <: AbstractFloat
+    """
+    Takes an NWChem struct and writes the appropriate input files to calculate the BSSE-corrected energy and gradients of a supermolecule. Each fragment should be contained in the array of matrices and the associated atom labels in atom_labels.
+    """
+    set_task!(nwchem.nwchem_input, "gradient")
+    used_input_names = write_bsse_input_files(nwchem.nwchem_input, coords, atom_labels)
+    output_names = [string(splitext(used_input_names[i])[1], ".out") for i in 1:length(used_input_names)]
+    
+    output_strings = Array{String}(undef, length(output_names))
+    @sync for i in 1:length(output_names)
+        @async output_strings[i] = read(pipeline(`$(nwchem.executable_command) $(used_input_names[i]) '&'`), String)
+    end
+
+    # write out the the results for future reference
+    for i in 1:length(output_strings)
+        open(output_names[i], "w") do io
+            write(io, output_strings[i])
+        end
+    end
+    nwchem_outputs = readlines.(output_names)
+    
+    all_energies = [parse_energies(nwchem_outputs[i])[nwchem.nwchem_input.theory[1]][1] for i in 1:length(nwchem_outputs)]
+    all_gradients = [parse_gradients(nwchem_outputs[i])[nwchem.nwchem_input.theory[1]][1] for i in 1:length(nwchem_outputs)]
+    # now combine everything into one bsse-corrected energy and gradients
+    return @views(all_energies[1] + sum(all_energies[2:(length(coords)+1)] - all_energies[(length(coords)+2):(2*length(coords)+1)])), @views(all_gradients[1] + hcat(all_gradients[2:(length(coords)+1)]...) - sum(all_gradients[(length(coords)+2):(2*length(coords)+1)]))
+end
+
+function get_bsse_corrected_gradients!(nwchem::NWChem, grads::Vector{T}, coords::Vector{Matrix{T}}, atom_labels::Vector{Vector{String}}) where T <: AbstractFloat
+    grads = vec(get_bsse_corrected_energy_and_gradients(nwchem, coords, atom_labels)[2])
+    display(grads)
+    println(norm(grads))
+end
