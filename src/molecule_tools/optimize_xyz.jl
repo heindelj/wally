@@ -2,13 +2,15 @@ include("read_xyz.jl")
 include("call_potential.jl")
 using Optim
 
-function optimize_xyz(geom::AbstractVecOrMat{<:AbstractFloat}, potential::AbstractPotential; g_tol=0.00001, iterations=2500, show_every=25, show_trace::Bool=true, kwargs...)
+function optimize_xyz(geom::AbstractVecOrMat{<:AbstractFloat}, potential::AbstractPotential; f_tol=1e-6, g_tol=1e-5, x_tol=1e-4, iterations=2500, show_every=25, show_trace::Bool=true, kwargs...)
     shape = size(geom)
     results = optimize(geom -> get_energy(potential, geom; kwargs...),
                     (grads, x) -> get_gradients!(potential, grads, x; kwargs...),
                            geom,
                            LBFGS(linesearch=Optim.LineSearches.MoreThuente()),
-                           Optim.Options(g_tol=g_tol,
+                           Optim.Options(f_tol=f_tol,
+                                         g_tol=g_tol,
+                                         x_tol=x_tol,
                                          show_trace=show_trace,
                                          show_every=show_every,
                                          iterations=iterations))
@@ -16,13 +18,15 @@ function optimize_xyz(geom::AbstractVecOrMat{<:AbstractFloat}, potential::Abstra
     return (Optim.minimum(results), final_geom)
 end
 
-function optimize_on_bsse_surface_nwchem(geom::AbstractMatrix{<:AbstractFloat}, potential_function::Function, gradient_function!::Function; g_tol=0.00001, iterations=2500, show_every=25, show_trace::Bool=true, kwargs...)
+function optimize_on_bsse_surface_nwchem(geom::AbstractMatrix{<:AbstractFloat}, potential_function::Function, gradient_function!::Function; f_tol=1e-6, g_tol=1e-5, x_tol=1e-4, iterations=2500, show_every=25, show_trace::Bool=true, kwargs...)
     shape = size(geom)
     results = optimize(potential_function,
                        gradient_function!,
                        geom,
                        LBFGS(linesearch=Optim.LineSearches.MoreThuente()),
-                       Optim.Options(g_tol=g_tol,
+                       Optim.Options(f_tol=f_tol,
+                                     g_tol=g_tol,
+                                     x_tol=x_tol,
                                      show_trace=show_trace,
                                      show_every=show_every,
                                      iterations=iterations))

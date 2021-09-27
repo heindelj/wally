@@ -396,8 +396,6 @@ function get_bsse_corrected_energy_and_gradients(nwchem::NWChem, coords::Vector{
     return @views(all_energies[1] + sum(all_energies[2:(length(coords)+1)] - all_energies[(length(coords)+2):(2*length(coords)+1)])), @views(all_gradients[1] + hcat(all_gradients[2:(length(coords)+1)]...) - sum(all_gradients[(length(coords)+2):(2*length(coords)+1)]))
 end
 
-function get_bsse_corrected_gradients!(nwchem::NWChem, grads::Vector{T}, coords::Vector{Matrix{T}}, atom_labels::Vector{Vector{String}}) where T <: AbstractFloat
-    grads = vec(get_bsse_corrected_energy_and_gradients(nwchem, coords, atom_labels)[2])
-    display(grads)
-    println(norm(grads))
+function get_bsse_corrected_gradients!(nwchem::NWChem, grads::Matrix{T}, coords::Vector{Matrix{T}}, atom_labels::Vector{Vector{String}}) where T <: AbstractFloat
+    grads[:] = get_bsse_corrected_energy_and_gradients(nwchem, coords, atom_labels)[2]
 end
