@@ -267,9 +267,12 @@ function get_energy(nwchem::NWChem, coords::Matrix{T}, atom_labels::Vector{Strin
     set_task!(nwchem.nwchem_input, "energy")
     used_input_name::String = write_input_file(nwchem.nwchem_input, coords, atom_labels, input_file_name, output_directory)
     output_name = string(splitext(used_input_name)[1], ".out")
-    run(`$(nwchem.executable_command) $used_input_name '>' output_name '&'`) 
+    output_string = read(pipeline(`$(nwchem.executable_command) $used_input_name '&'`), String)
+    open(output_name, "w") do io
+        write(io, output_string)
+    end
     # the above blocks until the job is finished which is what we want so we can read in the file on the next line
-    nwchem_output = readlines(output_name)
+    nwchem_output = string.(split(output_string, '\n'))
     
     energies = parse_energies(nwchem_output)
     if return_dict
@@ -285,9 +288,12 @@ function get_energy(nwchem::NWChem, coords::Vector{Matrix{T}}, atom_labels::Vect
     set_task!(nwchem.nwchem_input, "energy")
     used_input_name::String = write_input_file(nwchem.nwchem_input, coords, atom_labels, input_file_name, output_directory)
     output_name = string(splitext(used_input_name)[1], ".out")
-    run(`$(nwchem.executable_command) $used_input_name '>' output_name '&'`) 
+    output_string = read(pipeline(`$(nwchem.executable_command) $used_input_name '&'`), String)
+    open(output_name, "w") do io
+        write(io, output_string)
+    end
     # the above blocks until the job is finished which is what we want so we can read in the file on the next line
-    nwchem_output = readlines(output_name)
+    nwchem_output = string.(split(output_string, '\n'))
     
     energies = parse_energies(nwchem_output)
     if return_dict
@@ -398,4 +404,19 @@ end
 
 function get_bsse_corrected_gradients!(nwchem::NWChem, grads::Matrix{T}, coords::Vector{Matrix{T}}, atom_labels::Vector{Vector{String}}) where T <: AbstractFloat
     grads[:] = get_bsse_corrected_energy_and_gradients(nwchem, coords, atom_labels)[2]
+end
+
+function get_approximate_bsse_corrected_energy(nwchem::NWChem, coords::Matrix{T}, atom_labels::Vector{String}, approximate_bsse_correction_function::Function) where T <: AbstractFloat
+    println(approximate_bsse_correction_function(coords, atom_labels))
+    return get_energy(nwchem, coords, atom_labels) + approximate_bsse_correction_function(coords, atom_labels)
+end
+
+function get_approximate_bsse_corrected_gradients!(nwchem::NWChem, grads::Matrix{T}, coords::Matrix{T}, atom_labels::Vector{String}, approximate_bsse_correction_function::Function) where T <: AbstractFloat
+    """
+    Uses the approximate_bsse_correction_function to correct for BSSE rather than doing the complete BSSE correction via ab initio.
+    
+    Note that the approximate_bsse_correction_function should return approximate BSSE-corrected gradients for the entire system, not just particular atom pairs.
+    """
+    display(approximate_bsse_correction_function(coords, atom_labels))
+    grads[:] = get_energy_and_gradients(nwchem, coords, atom_labels)[2] + approximate_bsse_correction_function(coords, atom_labels)
 end

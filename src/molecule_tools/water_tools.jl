@@ -1,15 +1,6 @@
 using LinearAlgebra
 include("units.jl")
 include("atomic_masses.jl")
-include("AbstractMolecule.jl")
-
-mutable struct WaterCluster{T} <: AbstractMolecule
-    coords::Matrix{T}
-    masses::Vector{T}
-end
-
-WaterCluster(coords::AbstractMatrix) = WaterCluster(sort_waters(coords), atomic_masses(repeat(["O", "H", "H"], size(coords, 2) ÷ 3)))
-WaterCluster(coords::AbstractMatrix, labels::AbstractVector{String}) = WaterCluster(sort_waters(coords, labels), atomic_masses(repeat(["O", "H", "H"], size(coords, 2) ÷ 3)))
 
 function r_psi_hydrogen_bonds(coords::AbstractMatrix)
     """
