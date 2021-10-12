@@ -84,6 +84,46 @@ function write_bsse_input_files(input::NWChemInput, geoms::Vector{Matrix{T}}, at
     return all_input_file_names
 end
 
+function write_single_bsse_input_file(input::NWChemInput, geoms::Vector{Matrix{T}}, atom_labels::Vector{Vector{String}}, out_directory::String="nwchem") where T <: AbstractFloat
+    """ 
+    Takes a vector of geoms and atom labels which are treated as fragments in a supermolecule. These are used to generate the various input files needed to calculate a counter-poise correction (for a dimer) or a site-site function counterpoise correction (for more than two fragments).
+    """
+    all_bsse_geoms = Matrix{Float64}[]
+    all_atom_labels_for_geoms = Vector{String}[]
+
+    # store the supermolecule geometry and labels
+    push!(all_bsse_geoms, hcat(geoms...))
+    push!(all_atom_labels_for_geoms, vcat(atom_labels...))
+
+    # store the monomer geometries and labels
+    for i in 1:length(geoms)
+        push!(all_bsse_geoms, geoms[i])
+        push!(all_atom_labels_for_geoms, atom_labels[i])
+    end
+
+    # store the monomer + ghost orbital geometries and labels
+    for i in 1:length(geoms)
+        # update the labels with bq for ghost functions and 
+        # add label to basis dict if missing. All bq centers use same basis for now.
+        ghost_labels = copy.(atom_labels)
+        for j in 1:length(atom_labels)
+            if j != i
+                for k in 1:length(atom_labels[j])
+                    ghost_labels[j][k] = string("bq", atom_labels[j][k])
+                    if haskey(input.basis, atom_labels[j][k])
+                        input.basis[ghost_labels[j][k]] = string(atom_labels[j][k], " ", input.basis[atom_labels[j][k]])
+                    else
+                        input.basis[ghost_labels[j][k]] = string(atom_labels[j][k], " ",  input.basis["*"])
+                    end
+                end
+            end
+        end
+        push!(all_bsse_geoms, hcat(geoms...))
+        push!(all_atom_labels_for_geoms, vcat(ghost_labels...))
+    end
+    return string(pwd(), "/", write_input_file(input, all_bsse_geoms, all_atom_labels_for_geoms, "input_for_bsse_correction.nw"))
+end
+
 function next_unique_name(file_name::String, i::Int=1)
     if isfile(string(file_name))
         new_file_name = string(splitext(file_name)[1], "_", i, splitext(file_name)[2])

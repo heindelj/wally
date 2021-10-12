@@ -349,12 +349,17 @@ end
 
 ###  NWChem BSSE Correction Methods  ###
 
-function get_bsse_corrected_energy(nwchem::NWChem, coords::Vector{Matrix{T}}, atom_labels::Vector{Vector{String}}) where T <: AbstractFloat
+function get_bsse_corrected_energy(nwchem::NWChem, coords::Vector{Matrix{T}}, atom_labels::Vector{Vector{String}}, separate_files_for_bsse::Bool=false) where T <: AbstractFloat
     """
     Takes an NWChem struct and writes the appropriate input files to calculate the BSSE-corrected energy of a supermolecule. Each fragment should be contained in the array of matrices and the associated atom labels in atom_labels.
     """
     set_task!(nwchem.nwchem_input, "energy")
-    used_input_names = write_bsse_input_files(nwchem.nwchem_input, coords, atom_labels)
+    used_input_names = String[]
+    if separate_files_for_bsse
+        used_input_names = write_bsse_input_files(nwchem.nwchem_input, coords, atom_labels)
+    else
+        used_input_names = [write_single_bsse_input_file(nwchem.nwchem_input, coords, atom_labels)]
+    end
     output_names = [string(splitext(used_input_names[i])[1], ".out") for i in 1:length(used_input_names)]
     
     output_strings = Array{String}(undef, length(output_names))
@@ -370,19 +375,29 @@ function get_bsse_corrected_energy(nwchem::NWChem, coords::Vector{Matrix{T}}, at
     end
     nwchem_outputs = readlines.(output_names)
     
-    all_energies = [parse_energies(nwchem_outputs[i])[nwchem.nwchem_input.theory[1]][1] for i in 1:length(nwchem_outputs)]
+    all_energies = Float64[]
+    if separate_files_for_bsse
+        all_energies = [parse_energies(nwchem_outputs[i])[nwchem.nwchem_input.theory[1]][1] for i in 1:length(nwchem_outputs)]
+    else
+        all_energies = parse_energies(nwchem_outputs[1])[nwchem.nwchem_input.theory[1]]
+    end
     # now combine everything into one bsse-corrected energy
     return @views(all_energies[1] + sum(all_energies[2:(length(coords)+1)] - all_energies[(length(coords)+2):(2*length(coords)+1)]))
 end
 
-function get_bsse_corrected_energy_and_gradients(nwchem::NWChem, coords::Vector{Matrix{T}}, atom_labels::Vector{Vector{String}}) where T <: AbstractFloat
+function get_bsse_corrected_energy_and_gradients(nwchem::NWChem, coords::Vector{Matrix{T}}, atom_labels::Vector{Vector{String}}, separate_files_for_bsse::Bool=false) where T <: AbstractFloat
     """
     Takes an NWChem struct and writes the appropriate input files to calculate the BSSE-corrected energy and gradients of a supermolecule. Each fragment should be contained in the array of matrices and the associated atom labels in atom_labels.
     """
     set_task!(nwchem.nwchem_input, "gradient")
-    used_input_names = write_bsse_input_files(nwchem.nwchem_input, coords, atom_labels)
+
+    used_input_names = String[]
+    if separate_files_for_bsse
+        used_input_names = write_bsse_input_files(nwchem.nwchem_input, coords, atom_labels)
+    else
+        used_input_names = [write_single_bsse_input_file(nwchem.nwchem_input, coords, atom_labels)]
+    end
     output_names = [string(splitext(used_input_names[i])[1], ".out") for i in 1:length(used_input_names)]
-    
     output_strings = Array{String}(undef, length(output_names))
     @sync for i in 1:length(output_names)
         @async output_strings[i] = read(pipeline(`$(nwchem.executable_command) $(used_input_names[i]) '&'`), String)
@@ -396,18 +411,24 @@ function get_bsse_corrected_energy_and_gradients(nwchem::NWChem, coords::Vector{
     end
     nwchem_outputs = readlines.(output_names)
     
-    all_energies = [parse_energies(nwchem_outputs[i])[nwchem.nwchem_input.theory[1]][1] for i in 1:length(nwchem_outputs)]
-    all_gradients = [parse_gradients(nwchem_outputs[i])[nwchem.nwchem_input.theory[1]][1] for i in 1:length(nwchem_outputs)]
+    all_energies = Float64[]
+    all_gradients = Matrix{Float64}[]
+    if separate_files_for_bsse
+        all_energies = [parse_energies(nwchem_outputs[i])[nwchem.nwchem_input.theory[1]][1] for i in 1:length(nwchem_outputs)]
+        all_gradients = [parse_gradients(nwchem_outputs[i])[nwchem.nwchem_input.theory[1]][1] for i in 1:length(nwchem_outputs)]
+    else
+        all_energies = parse_energies(nwchem_outputs[1])[nwchem.nwchem_input.theory[1]]
+        all_gradients = parse_gradients(nwchem_outputs[1])[nwchem.nwchem_input.theory[1]]
+    end
     # now combine everything into one bsse-corrected energy and gradients
     return @views(all_energies[1] + sum(all_energies[2:(length(coords)+1)] - all_energies[(length(coords)+2):(2*length(coords)+1)])), @views(all_gradients[1] + hcat(all_gradients[2:(length(coords)+1)]...) - sum(all_gradients[(length(coords)+2):(2*length(coords)+1)]))
 end
 
-function get_bsse_corrected_gradients!(nwchem::NWChem, grads::Matrix{T}, coords::Vector{Matrix{T}}, atom_labels::Vector{Vector{String}}) where T <: AbstractFloat
-    grads[:] = get_bsse_corrected_energy_and_gradients(nwchem, coords, atom_labels)[2]
+function get_bsse_corrected_gradients!(nwchem::NWChem, grads::Matrix{T}, coords::Vector{Matrix{T}}, atom_labels::Vector{Vector{String}}, separate_files_for_bsse::Bool=false) where T <: AbstractFloat
+    grads[:] = get_bsse_corrected_energy_and_gradients(nwchem, coords, atom_labels, separate_files_for_bsse)[2]
 end
 
 function get_approximate_bsse_corrected_energy(nwchem::NWChem, coords::Matrix{T}, atom_labels::Vector{String}, approximate_bsse_correction_function::Function) where T <: AbstractFloat
-    println(approximate_bsse_correction_function(coords, atom_labels))
     return get_energy(nwchem, coords, atom_labels) + approximate_bsse_correction_function(coords, atom_labels)
 end
 
@@ -417,6 +438,5 @@ function get_approximate_bsse_corrected_gradients!(nwchem::NWChem, grads::Matrix
     
     Note that the approximate_bsse_correction_function should return approximate BSSE-corrected gradients for the entire system, not just particular atom pairs.
     """
-    display(approximate_bsse_correction_function(coords, atom_labels))
     grads[:] = get_energy_and_gradients(nwchem, coords, atom_labels)[2] + approximate_bsse_correction_function(coords, atom_labels)
 end
