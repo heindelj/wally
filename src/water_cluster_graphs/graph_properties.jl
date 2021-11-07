@@ -1,4 +1,4 @@
-using LightGraphs
+using Graphs
 using Statistics
 using StaticArrays
 using ProgressBars

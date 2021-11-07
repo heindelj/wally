@@ -1,6 +1,6 @@
 include("../molecule_tools/water_tools.jl")
 include("../molecule_tools/read_xyz.jl")
-using LightGraphs
+using Graphs
 using ProgressBars
 
 function adjacency_matrix(water_cluster_geom::Array{T, 2}; simple_graph::Bool=true) where T <: AbstractFloat
@@ -55,14 +55,14 @@ function form_simple_molecular_graph(water_cluster_geom::Array{T, 2}) where T <:
     """
     Makes LightGraph out of a molecular structure by computing the structures adjacency matrix.
     """
-    return LightGraphs.SimpleGraph(adjacency_matrix(water_cluster_geom))
+    return Graphs.SimpleGraph(adjacency_matrix(water_cluster_geom))
 end
 
 function form_simple_molecular_graph(water_cluster_geoms::Array{Array{T, 2}, 1}) where T <: AbstractFloat
     """
     Makes LightGraph out of a molecular structure by computing the structures adjacency matrix.
     """
-    return LightGraphs.SimpleGraph.(adjacency_matrix(water_cluster_geoms))
+    return Graphs.SimpleGraph.(adjacency_matrix(water_cluster_geoms))
 end
 #######
 
@@ -71,14 +71,14 @@ function form_directed_molecular_graph(water_cluster_geom::Array{T, 2}) where T 
     """
     Makes LightGraph out of a molecular structure by computing the structures adjacency matrix.
     """
-    return LightGraphs.SimpleDiGraph(adjacency_matrix(water_cluster_geom, simple_graph=false))
+    return Graphs.SimpleDiGraph(adjacency_matrix(water_cluster_geom, simple_graph=false))
 end
 
 function form_directed_molecular_graph(water_cluster_geoms::Array{Array{T, 2}, 1}) where T <: AbstractFloat
     """
     Makes LightGraph out of a molecular structure by computing the structures adjacency matrix.
     """
-    return LightGraphs.SimpleDiGraph.(adjacency_matrix(water_cluster_geoms, simple_graph=false))
+    return Graphs.SimpleDiGraph.(adjacency_matrix(water_cluster_geoms, simple_graph=false))
 end
 ######
 
@@ -98,7 +98,7 @@ function split_clusters_into_families(water_cluster_geoms::Array{Array{T, 2}, 1}
             has_matched::Bool = false
             for families in indices_into_families
                 if !has_matched
-                    if LightGraphs.Experimental.has_isomorph(graphs[i], graphs[families[begin]])
+                    if Graphs.Experimental.has_isomorph(graphs[i], graphs[families[begin]])
                         push!(families, i)
                         has_matched = true
                         break
