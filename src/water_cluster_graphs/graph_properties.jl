@@ -5,20 +5,29 @@ using ProgressBars
 
 include("molecular_graph_utils.jl")
 
-function count_rings(G::LightGraphs.SimpleGraph, ring_size::Int; return_paths::Bool=false)
+function count_rings(G::Graphs.SimpleGraph, ring_size::Int; return_paths::Bool=false, is_recursive_call::Bool=false)
     visit_stack::Vector{Vector{Int}} = [[i] for i in vertices(G)]
 
     visited = Set{Int}()
     rings = Vector{StaticArrays.SVector{ring_size, Int}}()
     num_rings::Int = 0
     ring_key_set = Vector{Set{Int}}()
+    smaller_rings = Vector{Set{Int}}()
+    if !is_recursive_call
+        for i in 3:(ring_size-1)
+            num, small_rings_found = count_rings(G, i; return_paths=true, is_recursive_call=true)
+            for j in 1:num
+                push!(smaller_rings, Set(small_rings_found[j]))
+            end
+        end
+    end
 
     while length(visit_stack) > 0
         path_to_expand::Vector{Int} = pop!(visit_stack)
         next_node::Int = path_to_expand[end]
         current_path_length::Int = length(path_to_expand)
 
-        for neighbor in LightGraphs.neighbors(G, next_node)
+        for neighbor in Graphs.neighbors(G, next_node)
             if current_path_length == ring_size
                 if neighbor == path_to_expand[begin]
                     degrees::Vector{Int} = degree(induced_subgraph(G, path_to_expand)[1])
@@ -38,13 +47,60 @@ function count_rings(G::LightGraphs.SimpleGraph, ring_size::Int; return_paths::B
             end
         end
     end
+    
+    # eliminate the graphs which are only one node different
+    # than triplets of smaller rings sizes.
+    # There is probably some more general rule here. Like if three rings share 
+    # a single node then there is a ring around the perimeter which will be
+    # erroneously counted.
+    #
+    # This is an abomination... But it works.
+    if length(smaller_rings) >= 3
+        for i in 1:length(smaller_rings)-2
+            for j in (i+1):length(smaller_rings)-1
+                for k in (j+1):length(smaller_rings)
+                    if (length(smaller_rings[i]) < ring_size) && (length(smaller_rings[j]) < ring_size) && (length(smaller_rings[k]) < ring_size)
+                        for i_ring in length(ring_key_set):-1:1
+                            if length(setdiff(union(smaller_rings[i], smaller_rings[j], smaller_rings[k]), ring_key_set[i_ring])) == 1
+                                println(smaller_rings[i], smaller_rings[j], smaller_rings[k])
+                                num_rings -= 1
+                                deleteat!(ring_key_set, i_ring)
+                                deleteat!(rings, i_ring)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    #if length(smaller_rings) >= 4
+    #    for i in 1:length(smaller_rings)-3
+    #        for j in (i+1):length(smaller_rings)-2
+    #            for k in (j+1):length(smaller_rings)-1
+    #                for l in (k+1):length(smaller_rings)
+    #                    if (length(smaller_rings[i]) < ring_size) && (length(smaller_rings[j]) < ring_size) && (length(smaller_rings[k]) < ring_size) && (length(smaller_rings[k]) < ring_size)
+    #                        for i_ring in length(ring_key_set):-1:1
+    #                            if length(setdiff(union(smaller_rings[i], smaller_rings[j], smaller_rings[k], smaller_rings[l]), ring_key_set[i_ring])) == 1
+    #                                num_rings -= 1
+    #                                deleteat!(ring_key_set, i_ring)
+    #                                deleteat!(rings, i_ring)
+    #                            end
+    #                        end
+    #                    end
+    #                end
+    #            end
+    #        end
+    #    end
+    #end
+
     if return_paths
         return num_rings, rings
     end
     return num_rings
 end
 
-function count_rings(G::LightGraphs.SimpleGraph{Int}, ring_sizes::UnitRange{Int})
+function count_rings(G::Graphs.SimpleGraph{Int}, ring_sizes::UnitRange{Int})
     counts::StaticArrays.MVector{length(ring_sizes), Int} = @MVector zeros(Int, length(ring_sizes))
 
     for (j, ring_size) in enumerate(ring_sizes)
@@ -53,7 +109,7 @@ function count_rings(G::LightGraphs.SimpleGraph{Int}, ring_sizes::UnitRange{Int}
     return counts
 end
 
-function count_rings(graphs::AbstractVector{LightGraphs.SimpleGraph{Int}}, ring_sizes::UnitRange{Int})
+function count_rings(graphs::AbstractVector{Graphs.SimpleGraph{Int}}, ring_sizes::UnitRange{Int})
     return pmap(x -> count_rings(x, ring_sizes), graphs)
 end
 
@@ -178,7 +234,7 @@ function get_swb_labels(geom::Matrix{T}, labels::AbstractVector) where T <: Real
     return swb_labels
 end
 
-function label_water_type(G::LightGraphs.SimpleDiGraph)
+function label_water_type(G::Graphs.SimpleDiGraph)
     """
     Takes a directed graph and determines the code for each node in the graph, e.g. AAD, ADD, etc.
     Stores the results in a dictionary indexed by the symbol :AAD, :ADD, etc.

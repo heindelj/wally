@@ -1,6 +1,7 @@
 include("../molecule_tools/water_tools.jl")
 include("../molecule_tools/read_xyz.jl")
 using Graphs
+import Graphs.LinAlg.adjacency_matrix
 using ProgressBars
 
 function adjacency_matrix(water_cluster_geom::Array{T, 2}; simple_graph::Bool=true) where T <: AbstractFloat

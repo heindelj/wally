@@ -12,6 +12,18 @@ mutable struct tcode
     indices::Vector{Int}
 end
 
+function tcode_from_digraph(g::SimpleDiGraph)
+    indices = Int[]
+    for i in 1:length(g.fadjlist)
+        neighbors = outneighbors(g, i)
+        for j in 1:length(neighbors)
+            push!(indices, i)
+            push!(indices, neighbors[j]) 
+        end
+    end
+    return tcode(indices)
+end
+
 function load_tcode_file(file_name::AbstractString)
     """
     Takes a file containing (possibly) many directed graphs represented via a tcode 
@@ -122,11 +134,11 @@ function structure_from_tcode(t_code::tcode; OO_distance::Float64 = 2.65, OH_dis
     return structure_from_tcode(t_code, structure, OH_distance=OH_distance, free_OH_distance=free_OH_distance)
 end
 
-function structure_from_tcode!(t_code::tcode, ref_coords::AbstractMatrix, structure::AbstractMatrix; OH_distance::Float64=0.98, free_OH_distance::Float64=0.95)
+function place_hydrogen_atoms_in_oxygen_framework!(t_code::tcode, structure::AbstractMatrix; OH_distance::Float64=0.98, free_OH_distance::Float64=0.95)
     # get the oxygen atom positions at the approproate indices
-    remaining_indices = collect(1:size(ref_coords)[2])
-    used_indices = collect(1:3:size(ref_coords)[2]) # start with the oxygen indices
-    @views structure[:, used_indices] = ref_coords[:, used_indices]
+    remaining_indices = collect(1:size(structure)[2])
+    used_indices = collect(1:3:size(structure)[2]) # start with the oxygen indices
+    centroid_coords = vec(centroid(structure))
 
     # place the hydrogen-bonded h atoms
     pairs = get_hbond_partners_from_tcode(t_code)
@@ -146,11 +158,11 @@ function structure_from_tcode!(t_code::tcode, ref_coords::AbstractMatrix, struct
 
     # place the free OH atoms (I slightly randomize so we don't get colinear vectors)
     for i_free_OH in remaining_indices
-        @views structure[:, i_free_OH] = dangling_hydrogen_from_centroid(structure[:, 3 * ((i_free_OH - 1) ÷ 3) + 1], vec(centroid(ref_coords)), free_OH_distance=free_OH_distance) + rand(3) * 0.0005
+        @views structure[:, i_free_OH] = dangling_hydrogen_from_centroid(structure[:, 3 * ((i_free_OH - 1) ÷ 3) + 1], centroid_coords, free_OH_distance=free_OH_distance) + rand(3) * 0.0005
     end
 
     # make all HOH angles 104.5
-    for i_Oxygen in 1:3:size(ref_coords)[2]
+    for i_Oxygen in 1:3:size(structure)[2]
         @views OH_1 = structure[:,i_Oxygen + 1] -  structure[:,i_Oxygen]
         @views OH_2 = structure[:,i_Oxygen + 2] -  structure[:,i_Oxygen]
         bisector = norm(OH_2) * OH_1 + norm(OH_1) * OH_2
@@ -174,6 +186,11 @@ function structure_from_tcode!(t_code::tcode, ref_coords::AbstractMatrix, struct
         @views structure[:,i_Oxygen + 1] = structure[:,i_Oxygen] + OH_1
         @views structure[:,i_Oxygen + 2] = structure[:,i_Oxygen] + OH_2
     end
+end
+
+function structure_from_tcode!(t_code::tcode, ref_coords::AbstractMatrix, structure::AbstractMatrix; OH_distance::Float64=0.98, free_OH_distance::Float64=0.95)
+    @views structure[:, used_indices] = ref_coords[:, used_indices]
+    place_hydrogen_atoms_in_oxygen_framework(t_code, structure, OH_distance=OH_distance, free_OH_distance=free_OH_distance)
 end
 
 function structure_from_tcode(t_code::tcode, ref_coords::AbstractMatrix; OH_distance::Float64 = 0.98, free_OH_distance::Float64 = 0.95)
