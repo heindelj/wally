@@ -152,6 +152,100 @@ function sort_waters(coords::AbstractMatrix, labels::AbstractVector; to_angstrom
     return coords[:, sorted_indices]
 end
 
+function sort_water_cluster(coords::AbstractMatrix, labels::AbstractVector, to_angstrom::Bool = false)
+    """
+    Sorts water clusters containing water, hydroxide, or hydronium
+	and puts H3O+ and OH- first. Then OHH sorted water.
+	"""
+    sorted_coords = zero(coords)
+    O_indices = Int[]
+	H_indices = Int[]
+
+	sorted_hydroxide_indices = Int[]
+	sorted_water_indices = Int[]
+	sorted_hydronium_indices = Int[]
+
+	distance_condition = 1.4
+	if to_angstrom
+		distance_condition *= conversion(:angstrom, :bohr)
+    end
+
+	# get indices of each atom type
+	for i in 1:length(labels)
+		if labels[i] == "O" || labels[i] == "o"
+		    push!(O_indices, i)
+		elseif labels[i] == "H" || labels[i] == "h"
+		    push!(H_indices, i)
+	    else
+		    @assert false "Atom other than O or H. Fix the code to handle this case lazy guy."
+	    end
+	end
+
+	indices_temp = Int[]
+    for O_index in O_indices
+        @views O_vec = coords[:, O_index]
+		push!(indices_temp, O_index)
+		for H_index in H_indices
+		    @views H_vec = coords[:, H_index]
+			if norm(O_vec - H_vec) < distance_condition
+                push!(indices_temp, H_index)
+		    end
+        end
+
+		if length(indices_temp) == 2
+		    append!(sorted_hydroxide_indices, indices_temp)
+	    elseif length(indices_temp) == 3
+		    append!(sorted_water_indices, indices_temp)
+		elseif length(indices_temp) == 4
+		    append!(sorted_hydronium_indices, indices_temp)
+	    else
+		    @assert false "Found more than four hydrogen neighbors to an oxygen. Quitting. Fix your code."
+		    # need to handle the case that there are too many
+			# neighbors which shouldn't happen but probably could
+	    end
+		empty!(indices_temp)
+    end
+
+	append!(sorted_hydroxide_indices, sorted_hydronium_indices)
+	append!(sorted_hydroxide_indices, sorted_water_indices)
+
+	return labels[sorted_hydroxide_indices], coords[:, sorted_hydroxide_indices]
+end
+
+function get_n_neighboring_waters(coords::AbstractMatrix, labels::AbstractVector, special_index::Int, num_neighbors::Int)
+    @assert labels[special_index] == "O" "Currently only support using an oxygen as the special index."
+	distances = zeros(count(==("O"), labels))
+	distance_indices = zeros(Int, count(==("O"), labels))
+	dist_index = 1
+	for i in 1:length(labels)
+		if labels[i] == "O"
+		    @views distances[dist_index] = norm(coords[:, i] - coords[:, special_index])
+			distance_indices[dist_index] = i
+	        dist_index += 1
+	    end
+    end
+	distances[special_index] = 100000000.0 # avoid choosing special atom as neighbor of itself
+	permuted_indices = distance_indices[partialsortperm(distances, 1:num_neighbors)]
+
+	# now find the hydrogens bonded to the nearest neighbors
+	final_indices = Int[]
+
+	temp_indices = Int[]
+	for index in [special_index, permuted_indices...]
+		push!(final_indices, index)
+        for i in 1:length(labels)
+		    if labels[i] == "H"
+				if norm(coords[:, index] - coords[:, i]) < 1.4
+				    push!(temp_indices, i)
+		 	    end
+		    end
+	    end
+		append!(final_indices, temp_indices)
+		empty!(temp_indices)
+    end
+	return labels[final_indices], coords[:, final_indices]
+end
+
 function sort_waters!(coords::AbstractArray{Matrix{T}, 1}, labels::AbstractVector{Vector{String}}; to_angstrom::Bool = false) where T <: Real
     Threads.@threads for i in 1:length(coords)
         coords[i] = sort_waters(coords[i], labels[i], to_angstrom=to_angstrom)

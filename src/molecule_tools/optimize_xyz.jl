@@ -7,7 +7,7 @@ function optimize_xyz(geom::AbstractVecOrMat{<:AbstractFloat}, potential::Abstra
     results = optimize(geom -> get_energy(potential, geom; kwargs...),
                     (grads, x) -> get_gradients!(potential, grads, x; kwargs...),
                            geom,
-                           LBFGS(linesearch=Optim.LineSearches.MoreThuente()),
+                           LBFGS(linesearch=Optim.LineSearches.HagerZhang()),
                            Optim.Options(f_tol=f_tol,
                                          g_tol=g_tol,
                                          x_tol=x_tol,

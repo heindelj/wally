@@ -5,7 +5,7 @@ using ProgressBars
 
 include("molecular_graph_utils.jl")
 
-function count_rings(G::Graphs.SimpleGraph, ring_size::Int; return_paths::Bool=false, is_recursive_call::Bool=false)
+function count_rings(G::Graphs.SimpleGraph, ring_size::Int; return_paths::Bool=false, is_recursive_call::Bool=false, return_all_ring_counts_up_to_ring_size::Bool=false)
     visit_stack::Vector{Vector{Int}} = [[i] for i in vertices(G)]
 
     visited = Set{Int}()
@@ -62,10 +62,11 @@ function count_rings(G::Graphs.SimpleGraph, ring_size::Int; return_paths::Bool=f
                     if (length(smaller_rings[i]) < ring_size) && (length(smaller_rings[j]) < ring_size) && (length(smaller_rings[k]) < ring_size)
                         for i_ring in length(ring_key_set):-1:1
                             if length(setdiff(union(smaller_rings[i], smaller_rings[j], smaller_rings[k]), ring_key_set[i_ring])) == 1
-                                println(smaller_rings[i], smaller_rings[j], smaller_rings[k])
                                 num_rings -= 1
                                 deleteat!(ring_key_set, i_ring)
-                                deleteat!(rings, i_ring)
+                                if return_paths
+                                    deleteat!(rings, i_ring)
+                                end
                             end
                         end
                     end
@@ -96,8 +97,15 @@ function count_rings(G::Graphs.SimpleGraph, ring_size::Int; return_paths::Bool=f
 
     if return_paths
         return num_rings, rings
+    elseif return_all_ring_counts_up_to_ring_size
+        ring_counts = zeros(Int, ring_size-2)
+        for i in 1:length(smaller_rings)
+            ring_counts[length(smaller_rings[i])-2] += 1
+        end
+        return ring_counts
+    else
+        return num_rings
     end
-    return num_rings
 end
 
 function count_rings(G::Graphs.SimpleGraph{Int}, ring_sizes::UnitRange{Int})
