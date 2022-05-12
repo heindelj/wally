@@ -219,12 +219,17 @@ function get_n_neighboring_waters(coords::AbstractMatrix, labels::AbstractVector
 	dist_index = 1
 	for i in 1:length(labels)
 		if labels[i] == "O"
-		    @views distances[dist_index] = norm(coords[:, i] - coords[:, special_index])
-			distance_indices[dist_index] = i
-	        dist_index += 1
+			if i != special_index
+		    	@views distances[dist_index] = norm(coords[:, i] - coords[:, special_index])
+				distance_indices[dist_index] = i
+	        	dist_index += 1
+			else
+				distances[dist_index] = 100000000.0 # avoid choosing special atom as neighbor of itself
+				distance_indices[dist_index] = i
+				dist_index += 1
+			end
 	    end
     end
-	distances[special_index] = 100000000.0 # avoid choosing special atom as neighbor of itself
 	permuted_indices = distance_indices[partialsortperm(distances, 1:num_neighbors)]
 
 	# now find the hydrogens bonded to the nearest neighbors
