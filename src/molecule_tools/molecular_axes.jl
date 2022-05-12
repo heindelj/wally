@@ -11,6 +11,26 @@ function center_of_mass_distance(sub_structure::AbstractMatrix, sub_structure_ma
     return norm(center_of_mass(sub_structure, sub_structure_masses) - center_of_mass(full_structure, full_structure_masses))
 end
 
+function align_vector_to_axis(src_axis::AbstractVector, target_axis::AbstractVector)
+	"""
+	Takes a source axis, some 3-D vector, and returns the rotation matrix
+	needed to align it with target_axis, probably a eucliden basis vector.
+	"""
+	rotation_angle = acos(dot(target_axis, src_axis) / (norm(target_axis) * norm(src_axis)))
+	rotation_vector = cross(normalize(src_axis), normalize(target_axis))
+	return Rotations.AngleAxis(rotation_angle, rotation_vector[1], rotation_vector[2], rotation_vector[3])
+end
+
+function apply_rotation_to_coords(coords::AbstractMatrix, src_axis::AbstractVector, target_axis::AbstractVector)
+	"""
+	Applies the rotation matrix generated from src_axis and target_axis
+	using align_vector_to_axis.
+	Returns the rotated coordinates.
+	"""
+	R = align_vector_to_axis(src_axis, target_axis)
+	return reshape(reinterpret(Float64, [rot_mat * col for col in eachcol(coords)]), 3, :)
+end
+
 #############################################
 ### CARTESIAN TO INTERNALS AND BACK AGAIN ###
 #############################################
