@@ -1,51 +1,65 @@
 using HybridArrays, StaticArrays
 
-function read_xyz(ifile::String; T::Type=Float64, static::Bool=false, up_to_N::Int=0)
+function read_xyz(ifile::String; T::Type=Float64, static::Bool=false, start_at_N::Int=1, load_N_frames::Int=typemax(Int))
     """
     Reads in an xyz file of possibly multiple geometries, returning the header, atom labels, 
     and coordinates as arrays of strings and Float64s for the coordinates.
-    If up_to_N is specified (greater than zero), only the first N geometries will be read.
+    If load_N_frames is specified (greater than zero),
+	only the first N geometries will be read starting from start_at_N.
     Otherwise, all geoms will be read.
     """
-    if up_to_N == 0
-        up_to_N = Integer(maxintfloat(Float64)) # a large number
-    end
-
-    header = Array{String, 1}()
-    atom_labels = Array{Array{String, 1}, 1}()
+    header = Vector{String}()
+    atom_labels = Vector{Vector{String}}()
     if static
-        geoms = Array{HybridArray{Tuple{3,StaticArrays.Dynamic()}}, 1}()
+        geoms = Vector{HybridArray{Tuple{3,StaticArrays.Dynamic()}}}()
     else
-        geoms = Array{Array{T, 2}, 1}()
+        geoms = Vector{Matrix{T}}()
     end
+	i_frame = 1
+	successfully_parsed = true
     open(ifile, "r") do io
         for line in eachline(io)
             if isa(tryparse(Int, line), Int)
+				successfully_parsed = true
                 # allocate the geometry for this frame
                 N = parse(Int, line)
+				if (i_frame >= start_at_N)
 
-                # store the header for this frame
-                head = string(line, "\n", readline(io))
-                push!(header, head)
-                # loop through the geometry storing the vectors and atom labels as you go
-                new_data = fill(Array{SubString{String},1}(), N)
-                geom = zeros((3,N))
-                labels = fill("", N)
+					# store the header for this frame
+					head = string(line, "\n", readline(io))
+					# loop through the geometry storing the vectors and atom labels as you go
+					new_data = fill(Vector{SubString{String}}(), N)
+					geom = zeros((3,N))
+					labels = fill("", N)
 
-                @inbounds for j = 1:N
-                    new_data[j] = split(readline(io))
-                end
-
-                @inbounds for j = 1:N
-                    labels[j] = new_data[j][1]
-                    geom[1,j] = parse(T, new_data[j][2])
-                    geom[2,j] = parse(T, new_data[j][3])
-                    geom[3,j] = parse(T, new_data[j][4])
-                end
-                push!(geoms, geom)
-                push!(atom_labels, labels)
+					for j = 1:N
+						new_data[j] = split(readline(io))
+					end
+					for j = 1:N
+						try
+							labels[j] = new_data[j][1]
+							geom[1,j] = parse(T, new_data[j][2])
+							geom[2,j] = parse(T, new_data[j][3])
+							geom[3,j] = parse(T, new_data[j][4])
+						catch
+							@warn "Failed to parse on frame " i_frame j new_data[j] "Skipping this frame and moving on."
+							successfully_parsed = false
+						end
+					end
+					if successfully_parsed
+						push!(header, head)
+						push!(geoms, geom)
+						push!(atom_labels, labels)
+					end
+				else
+					# dump the frame since we are skipping to start_at_N
+					for _ in 1:N
+						readline(io)
+					end
+				end
+				i_frame += 1
             end
-            if length(header) == up_to_N
+            if length(header) == load_N_frames
                 break
             end
         end

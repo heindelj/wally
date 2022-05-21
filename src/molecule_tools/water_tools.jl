@@ -1,6 +1,42 @@
 using LinearAlgebra
+using StaticArrays
 include("units.jl")
 include("atomic_masses.jl")
+
+function is_a_distance_angle_hydrogen_bond(O_donor_index::Int, H_donor_index::Int, O_acceptor_index::Int, coords::AbstractMatrix, distance_cutoff::Float64=2.9, angle_cutoff=120.0)
+	"""
+	Tests if a hydrogen and oxygen are h-bonded based on distance and angle
+	cutoffs. Takes the oxygen and hydrogen donor index as well as the acceptor
+	index to allow for tests involving hydroxide and hydronium as well.
+	"""
+	@views bond_vec = coords[:,H_donor_index] - coords[:,O_donor_index]
+	@views hbond_vec = coords[:,H_donor_index] - coords[:,O_acceptor_index]
+	angle = acosd(bond_vec ⋅ hbond_vec / (norm(bond_vec) * norm(hbond_vec)))
+	if (angle > angle_cutoff && norm(hbond_vec) < distance_cutoff)
+		return true
+	end	
+	return false
+end
+
+function number_of_accepted_hydrogen_bonds(coords::AbstractMatrix, labels::AbstractVector{String}, O_acceptor_index::Int, distance_cutoff::Float64=2.7, angle_cutoff::Float64=115.0)
+	"""
+	Takes coords, labels, and an index and find the number of hydrogen bonds
+	in a system. Cluster must be sorted in OHH order.
+	"""
+	sorted_labels, sorted_coords = sort_water_cluster(coords, labels)
+	num_hbonds = 0
+	for i in 1:length(sorted_labels)
+		if sorted_labels[i] == "O" && i != O_acceptor_index
+			if is_a_distance_angle_hydrogen_bond(i, i+1, O_acceptor_index, sorted_coords, distance_cutoff, angle_cutoff)
+				num_hbonds += 1
+			end
+			if is_a_distance_angle_hydrogen_bond(i, i+2, O_acceptor_index, sorted_coords, distance_cutoff, angle_cutoff)
+				num_hbonds += 1
+			end
+		end
+	end
+	return num_hbonds
+end
 
 function r_psi_hydrogen_bonds(coords::AbstractMatrix)
     """
@@ -152,12 +188,11 @@ function sort_waters(coords::AbstractMatrix, labels::AbstractVector; to_angstrom
     return coords[:, sorted_indices]
 end
 
-function sort_water_cluster(coords::AbstractMatrix, labels::AbstractVector, to_angstrom::Bool = false)
+function sort_water_cluster(coords::AbstractMatrix, labels::AbstractVector, to_angstrom::Bool = false; return_permutation::Bool = false)
     """
     Sorts water clusters containing water, hydroxide, or hydronium
 	and puts H3O+ and OH- first. Then OHH sorted water.
 	"""
-    sorted_coords = zero(coords)
     O_indices = Int[]
 	H_indices = Int[]
 
@@ -165,7 +200,7 @@ function sort_water_cluster(coords::AbstractMatrix, labels::AbstractVector, to_a
 	sorted_water_indices = Int[]
 	sorted_hydronium_indices = Int[]
 
-	distance_condition = 1.4
+	distance_condition = 1.3
 	if to_angstrom
 		distance_condition *= conversion(:angstrom, :bohr)
     end
@@ -208,19 +243,22 @@ function sort_water_cluster(coords::AbstractMatrix, labels::AbstractVector, to_a
 
 	append!(sorted_hydroxide_indices, sorted_hydronium_indices)
 	append!(sorted_hydroxide_indices, sorted_water_indices)
-
+	if return_permutation
+		return sorted_hydroxide_indices
+	end
 	return labels[sorted_hydroxide_indices], coords[:, sorted_hydroxide_indices]
 end
 
 function get_n_neighboring_waters(coords::AbstractMatrix, labels::AbstractVector, special_index::Int, num_neighbors::Int)
     @assert labels[special_index] == "O" "Currently only support using an oxygen as the special index."
+	static_coords = [SVector{3, Float64}(coords[:,i]) for i in 1:size(coords, 2)]
 	distances = zeros(count(==("O"), labels))
 	distance_indices = zeros(Int, count(==("O"), labels))
 	dist_index = 1
-	for i in 1:length(labels)
+	@inbounds for i in 1:length(labels)
 		if labels[i] == "O"
 			if i != special_index
-		    	@views distances[dist_index] = norm(coords[:, i] - coords[:, special_index])
+		    	@views distances[dist_index] = norm(coords[i] - coords[special_index])
 				distance_indices[dist_index] = i
 	        	dist_index += 1
 			else
@@ -236,11 +274,11 @@ function get_n_neighboring_waters(coords::AbstractMatrix, labels::AbstractVector
 	final_indices = Int[]
 
 	temp_indices = Int[]
-	for index in [special_index, permuted_indices...]
+	@inbounds for index in [special_index, permuted_indices...]
 		push!(final_indices, index)
         for i in 1:length(labels)
 		    if labels[i] == "H"
-				if norm(coords[:, index] - coords[:, i]) < 1.4
+				@views if (coords[index] - coords[i])⋅(coords[index] - coords[i]) < 1.3*1.3
 				    push!(temp_indices, i)
 		 	    end
 		    end
@@ -249,6 +287,57 @@ function get_n_neighboring_waters(coords::AbstractMatrix, labels::AbstractVector
 		empty!(temp_indices)
     end
 	return labels[final_indices], coords[:, final_indices]
+end
+
+function get_hydroxide_indices(coords::AbstractMatrix, labels::AbstractVector{String}; max_matches::Int=typemax(Int))
+	"""
+	Finds the hydroxide ions in a collection of Hs and Os.
+	max_matches means to stop after finding a certain number of OH-.
+	"""
+	static_coords = [SVector{3, Float64}(coords[:,i]) for i in 1:size(coords, 2)]
+	water_indices = Int[]
+	hydroxide_indices = Int[]
+	O_indices = zeros(Int, count(==("O"), labels))
+	H_indices = zeros(Int, count(==("H"), labels))
+	
+	# get indices of each atom type
+	O_counter = 1
+	H_counter = 1
+	for i in 1:length(labels)
+		if labels[i] == "O" || labels[i] == "o"
+			O_indices[O_counter] = i
+			O_counter += 1
+		elseif labels[i] == "H" || labels[i] == "h"
+			H_indices[H_counter] = i
+			H_counter += 1
+	    else
+		    @assert false "Atom other than O or H. Fix the code to handle this case lazy guy."
+	    end
+	end
+	
+	@assert length(H_indices) == H_counter-1
+	@assert length(O_indices) == O_counter-1
+	@assert length(labels) == size(coords, 2) "Not the same number of labels as coordinates."
+	@inbounds for O_index in O_indices
+		push!(water_indices, O_index)
+		for H_index in H_indices
+			@views if (static_coords[O_index] - static_coords[H_index])⋅(static_coords[O_index] - static_coords[H_index]) < 1.3 * 1.3
+				push!(water_indices, H_index)
+				if length(water_indices) > 2 # not a hydroxide
+					break
+				end
+			end
+		end
+		if length(water_indices) == 2
+			append!(hydroxide_indices, water_indices)
+		end
+		if length(hydroxide_indices) == 2 * max_matches
+			break
+		end
+		empty!(water_indices)
+	end
+
+	return hydroxide_indices
 end
 
 function sort_waters!(coords::AbstractArray{Matrix{T}, 1}, labels::AbstractVector{Vector{String}}; to_angstrom::Bool = false) where T <: Real
