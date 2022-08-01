@@ -258,7 +258,7 @@ function get_n_neighboring_waters(coords::AbstractMatrix, labels::AbstractVector
 	@inbounds for i in 1:length(labels)
 		if labels[i] == "O"
 			if i != special_index
-		    	@views distances[dist_index] = norm(coords[i] - coords[special_index])
+                @views distances[dist_index] = norm(static_coords[i] - static_coords[special_index])
 				distance_indices[dist_index] = i
 	        	dist_index += 1
 			else
@@ -278,8 +278,32 @@ function get_n_neighboring_waters(coords::AbstractMatrix, labels::AbstractVector
 		push!(final_indices, index)
         for i in 1:length(labels)
 		    if labels[i] == "H"
-				@views if (coords[index] - coords[i])⋅(coords[index] - coords[i]) < 1.3*1.3
-				    push!(temp_indices, i)
+				@views if (static_coords[index] - static_coords[i])⋅(static_coords[index] - static_coords[i]) < 1.3*1.3
+                    if i ∉ final_indices
+				        push!(temp_indices, i)
+                    end
+                    if length(temp_indices) > 2
+                        # we've found too many close hydrogens
+                        OH_1 = 100000000000.0
+                        OH_2 = 100000000000.0
+                        OH_index_1 = 0
+                        OH_index_2 = 0
+                        for H_index in temp_indices
+                            dist = norm(static_coords[index] - static_coords[H_index])
+                            if dist < OH_1
+                                OH_1 = dist
+                                OH_index_1 = H_index
+                            elseif dist < OH_2
+                                OH_2 = dist
+                                OH_index_2 = H_index
+                            end
+                        end
+                        @assert OH_index_1 > 0 "Failed to sort out too many H neighbors problem."
+                        @assert OH_index_2 > 0 "Failed to sort out too many H neighbors problem."
+                        empty!(temp_indices)
+                        push!(temp_indices, H_index_1)
+                        push!(temp_indices, H_index_2)
+                    end
 		 	    end
 		    end
 	    end
@@ -338,6 +362,56 @@ function get_hydroxide_indices(coords::AbstractMatrix, labels::AbstractVector{St
 	end
 
 	return hydroxide_indices
+end
+
+function has_hemibonded_structure(coords::AbstractMatrix{T}, labels::AbstractVector{String}, sort_cluster::Bool=true) where T <: Real
+    """
+    Determines if a hydroxide water cluster has any hemibonded structures
+    based on the geometric criteria described in: 
+    Chipman, D. M. (2011). Hemibonding between hydroxyl radical and water.
+    The Journal of Physical Chemistry A, 115(7), 1161-1171.
+
+    Sorts the water cluster and finds all hydroxide indices then
+    checks for hemibonds against all other waters.
+
+    Returns -1 if no hemibonded structure found and the index of oxygen
+    in water which is hemibonded if such a structure is found.
+    """
+    if sort_cluster
+        labels, coords = sort_water_cluster(coords, labels)
+    end
+    hydroxide_indices = get_hydroxide_indices(coords, labels)
+    sanity_check = ((size(coords, 2) - length(hydroxide_indices)) % 3 == 0) 
+    if (!sanity_check)
+        println("Warning: After accounting for hydroxide, this is not pure water. Have to know how to neglect the other atoms or better classify the hydroxide.")
+        println("Hydroxide indices: ", hydroxide_indices)
+        println("Num atoms total: ", size(coords, 2))
+        println("RETURNING FALSE!")
+        return -1
+    end
+
+    water_indices = setdiff([1:length(labels)...], hydroxide_indices)
+    water_array = get_array_of_waters(coords[:, water_indices], labels[water_indices])
+    for i in 1:2:length(hydroxide_indices)
+        hydroxide_O_index = hydroxide_indices[i]
+        for (j, water_geom) in enumerate(water_array)
+            OO_vec = coords[:,i] - water_geom[:,1]
+            OH_vec = coords[:,i] - coords[:,i+1]
+            HOH_bisector = 0.5 * ((water_geom[:,1]-water_geom[:,2]) + (water_geom[:,1]-water_geom[:,3]))
+            α = acosd(OO_vec ⋅ OH_vec / (norm(OO_vec) * norm(OH_vec)))
+            r_OO = norm(OO_vec)
+            χ = acosd(HOH_bisector ⋅ OO_vec / (norm(OO_vec) * norm(HOH_bisector)))
+            if r_OO > 2.38 && r_OO < 2.92
+                if α > 52.0 && α < 137.0
+                    if χ > 20.0 && χ < 60.0
+                        #println(string(r_OO, " ", α, " ", χ))
+                        return length(hydroxide_indices) + 3*(j-1) + 1
+                    end
+                end
+            end
+        end
+    end
+    return -1
 end
 
 function sort_waters!(coords::AbstractArray{Matrix{T}, 1}, labels::AbstractVector{Vector{String}}; to_angstrom::Bool = false) where T <: Real
