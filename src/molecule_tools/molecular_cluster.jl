@@ -2,6 +2,7 @@ using StaticArrays, NearestNeighbors
 using StatsBase: countmap
 include("covalent_radii.jl")
 include("molecular_axes.jl")
+include("read_xyz.jl")
 
 """
 The point of this it to somehow represent disjoint molecular
@@ -123,4 +124,26 @@ end
 function find_n_nearest_neighbors(cluster::Cluster, geom::AbstractMatrix{Float64}, labels::AbstractVector{String}, chemical_formula::Vector{String}, n::Int)
     molecule_indices = molecules_by_formula(cluster, labels, chemical_formula)
     return find_n_nearest_neighbors(cluster, geom, labels, molecule_indices, n)
+end
+
+function write_n_nearest_neighbors(geoms::AbstractVector{Matrix{Float64}}, labels::AbstractVector{Vector{String}}, chemical_formula::Vector{String}, n::Int, file_name::String="subclusters.xyz")
+    labels_out = Vector{String}[]
+    geoms_out  = Matrix{Float64}[]
+    l = ReentrantLock()
+    Threads.@threads for i in 1:length(geoms)
+        id = Threads.threadid()
+        cluster = build_cluster(geoms[i], labels[i])
+        labels_frame, geoms_frame = find_n_nearest_neighbors(cluster, geoms[i], labels[i], chemical_formula, n)
+        lock(l)
+        try
+            append!(labels_out, labels_frame)
+            append!(geoms_out, geoms_frame)
+        finally
+            unlock(l)
+        end
+    end
+    #labels_out = reduce(vcat, labels_out_t)
+    #geoms_out = reduce(vcat, geoms_out_t)
+
+    write_xyz(file_name, [string(length(labels_out[i]), "\n") for i in 1:length(labels_out)], labels_out, geoms_out)
 end
