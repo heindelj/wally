@@ -9,6 +9,7 @@ function conversion(unit1::Symbol, unit2::Symbol)
         # distances
         :bohr         => 1.0,
         :angstrom     => 0.529177210903,
+        :pm           => 100 * 0.529177210903,
         # masses
         :amu          => 1.0,
         :au_mass      => 1822.88839,
