@@ -23,8 +23,10 @@ molecular units rather than the nearest atoms.
 """
 
 struct Cluster
-    centers::Vector{SVector{3, Float64}}
-    indices::Vector{Vector{Int}}
+    centers::Vector{SVector{3, Float64}} # location of each molecule
+    indices::Vector{Vector{Int}} # maps from molecule indices to full system indices
+    geom::Matrix{Float64} # full system coordinates
+    labels::Vector{String} # full system labels
 end
 
 function is_bonded(distance::Float64, label1::String, label2::String)
@@ -66,12 +68,12 @@ function find_bonded_atoms!(
     end
 end
 
-function build_cluster(geom::AbstractMatrix{Float64}, labels::AbstractVector{String}, max_neighbors::Int=8)
+function build_cluster(geom::AbstractMatrix{Float64}, labels::AbstractVector{String}, max_number_of_atoms::Int=8)
     """
     Default method for building a molecular cluster. Uses covalent radius definition of bonding and centroid as position of molecular subunits.
     """
     nl = KDTree(geom)
-    indices, dists = knn(nl, geom, max_neighbors+1, true)
+    indices, dists = knn(nl, geom, max_number_of_atoms+1, true)
 
     cluster_indices = Vector{Vector{Int}}()
     for i in 1:length(labels)
@@ -86,10 +88,10 @@ function build_cluster(geom::AbstractMatrix{Float64}, labels::AbstractVector{Str
         end
     end
     cluster_centers = [SVector{3, Float64}(centroid(geom[:,index_set])) for index_set in cluster_indices]
-    return Cluster(cluster_centers, cluster_indices)
+    return Cluster(cluster_centers, cluster_indices, geom, labels)
 end
 
-function find_n_nearest_neighbors(cluster::Cluster, geom::AbstractMatrix{Float64}, labels::AbstractVector{String}, center_indices::Vector{Int}, n::Int)
+function find_n_nearest_neighbors(cluster::Cluster, center_indices::Vector{Int}, n::Int)
     """
     Finds the n nearest neighbors for a collection of indices.
     The center_indices are the indices for the cluster, not the geometry
@@ -102,16 +104,16 @@ function find_n_nearest_neighbors(cluster::Cluster, geom::AbstractMatrix{Float64
     geoms_out = Vector{Matrix{Float64}}()
     for i in 1:length(neighbor_indices)
         total_indices = reduce(vcat, cluster.indices[neighbor_indices[i]])
-        push!(labels_out, labels[total_indices])
-        push!(geoms_out, geom[:, total_indices])
+        push!(labels_out, cluster.labels[total_indices])
+        push!(geoms_out, cluster.geom[:, total_indices])
     end
     return labels_out, geoms_out
 end
 
-function molecules_by_formula(cluster::Cluster, labels::Vector{String}, chemical_formula::Vector{String})
+function molecules_by_formula(cluster::Cluster, chemical_formula::Vector{String})
     indices_out = Vector{Int}()
     for (i, molecule_indices) in enumerate(cluster.indices)
-        if countmap(chemical_formula) == countmap(labels[molecule_indices])
+        if countmap(chemical_formula) == countmap(cluster.labels[molecule_indices])
             push!(indices_out, i)
         end
     end
@@ -121,9 +123,9 @@ function molecules_by_formula(cluster::Cluster, labels::Vector{String}, chemical
     @assert false "Did not find any molecules matching the requested chemical formula."
 end
 
-function find_n_nearest_neighbors(cluster::Cluster, geom::AbstractMatrix{Float64}, labels::AbstractVector{String}, chemical_formula::Vector{String}, n::Int)
-    molecule_indices = molecules_by_formula(cluster, labels, chemical_formula)
-    return find_n_nearest_neighbors(cluster, geom, labels, molecule_indices, n)
+function find_n_nearest_neighbors(cluster::Cluster, chemical_formula::Vector{String}, n::Int)
+    molecule_indices = molecules_by_formula(cluster, chemical_formula)
+    return find_n_nearest_neighbors(cluster, molecule_indices, n)
 end
 
 function write_n_nearest_neighbors(geoms::AbstractVector{Matrix{Float64}}, labels::AbstractVector{Vector{String}}, chemical_formula::Vector{String}, n::Int, file_name::String="subclusters.xyz")
@@ -133,7 +135,7 @@ function write_n_nearest_neighbors(geoms::AbstractVector{Matrix{Float64}}, label
     Threads.@threads for i in 1:length(geoms)
         id = Threads.threadid()
         cluster = build_cluster(geoms[i], labels[i])
-        labels_frame, geoms_frame = find_n_nearest_neighbors(cluster, geoms[i], labels[i], chemical_formula, n)
+        labels_frame, geoms_frame = find_n_nearest_neighbors(cluster, chemical_formula, n)
         lock(l)
         try
             append!(labels_out, labels_frame)
@@ -142,8 +144,6 @@ function write_n_nearest_neighbors(geoms::AbstractVector{Matrix{Float64}}, label
             unlock(l)
         end
     end
-    #labels_out = reduce(vcat, labels_out_t)
-    #geoms_out = reduce(vcat, geoms_out_t)
 
     write_xyz(file_name, [string(length(labels_out[i]), "\n") for i in 1:length(labels_out)], labels_out, geoms_out)
 end

@@ -2,15 +2,16 @@ using LinearAlgebra
 using StaticArrays
 include("units.jl")
 include("atomic_masses.jl")
+include("molecular_cluster.jl")
 
-function is_a_distance_angle_hydrogen_bond(O_donor_index::Int, H_donor_index::Int, O_acceptor_index::Int, coords::AbstractMatrix, distance_cutoff::Float64=2.9, angle_cutoff=120.0)
+function is_a_distance_angle_hydrogen_bond(O_donor_index::Int, H_donor_index::Int, acceptor_index::Int, coords::AbstractMatrix, distance_cutoff::Float64=2.9, angle_cutoff=120.0)
 	"""
 	Tests if a hydrogen and oxygen are h-bonded based on distance and angle
 	cutoffs. Takes the oxygen and hydrogen donor index as well as the acceptor
 	index to allow for tests involving hydroxide and hydronium as well.
 	"""
-	@views bond_vec = coords[:,H_donor_index] - coords[:,O_donor_index]
-	@views hbond_vec = coords[:,H_donor_index] - coords[:,O_acceptor_index]
+	@views bond_vec = coords[:, H_donor_index] - coords[:, O_donor_index]
+	@views hbond_vec = coords[:, H_donor_index] - coords[:, acceptor_index]
 	angle = acosd(bond_vec ⋅ hbond_vec / (norm(bond_vec) * norm(hbond_vec)))
 	if (angle > angle_cutoff && norm(hbond_vec) < distance_cutoff)
 		return true
@@ -18,7 +19,7 @@ function is_a_distance_angle_hydrogen_bond(O_donor_index::Int, H_donor_index::In
 	return false
 end
 
-function number_of_accepted_hydrogen_bonds(coords::AbstractMatrix, labels::AbstractVector{String}, O_acceptor_index::Int, distance_cutoff::Float64=2.7, angle_cutoff::Float64=115.0)
+function number_of_accepted_hydrogen_bonds(coords::AbstractMatrix, labels::AbstractVector{String}, acceptor_index::Int, distance_cutoff::Float64=2.7, angle_cutoff::Float64=115.0)
 	"""
 	Takes coords, labels, and an index and find the number of hydrogen bonds
 	in a system. Cluster must be sorted in OHH order.
@@ -26,11 +27,11 @@ function number_of_accepted_hydrogen_bonds(coords::AbstractMatrix, labels::Abstr
 	sorted_labels, sorted_coords = sort_water_cluster(coords, labels)
 	num_hbonds = 0
 	for i in 1:length(sorted_labels)
-		if sorted_labels[i] == "O" && i != O_acceptor_index
-			if is_a_distance_angle_hydrogen_bond(i, i+1, O_acceptor_index, sorted_coords, distance_cutoff, angle_cutoff)
+		if sorted_labels[i] == "O" && i != acceptor_index
+			if is_a_distance_angle_hydrogen_bond(i, i+1, acceptor_index, sorted_coords, distance_cutoff, angle_cutoff)
 				num_hbonds += 1
 			end
-			if is_a_distance_angle_hydrogen_bond(i, i+2, O_acceptor_index, sorted_coords, distance_cutoff, angle_cutoff)
+			if is_a_distance_angle_hydrogen_bond(i, i+2, acceptor_index, sorted_coords, distance_cutoff, angle_cutoff)
 				num_hbonds += 1
 			end
 		end
@@ -195,6 +196,7 @@ function sort_water_cluster(coords::AbstractMatrix, labels::AbstractVector, to_a
 	"""
     O_indices = Int[]
 	H_indices = Int[]
+    all_indices = Int[]
 
 	sorted_hydroxide_indices = Int[]
 	sorted_water_indices = Int[]
@@ -212,7 +214,7 @@ function sort_water_cluster(coords::AbstractMatrix, labels::AbstractVector, to_a
 		elseif labels[i] == "H" || labels[i] == "h"
 		    push!(H_indices, i)
 	    else
-		    @assert false "Atom other than O or H. Fix the code to handle this case lazy guy."
+            push!(all_indices, i)
 	    end
 	end
 
@@ -243,10 +245,11 @@ function sort_water_cluster(coords::AbstractMatrix, labels::AbstractVector, to_a
 
 	append!(sorted_hydroxide_indices, sorted_hydronium_indices)
 	append!(sorted_hydroxide_indices, sorted_water_indices)
+    append!(all_indices, sorted_hydroxide_indices)
 	if return_permutation
-		return sorted_hydroxide_indices
+		return all_indices
 	end
-	return labels[sorted_hydroxide_indices], coords[:, sorted_hydroxide_indices]
+	return labels[all_indices], coords[:, all_indices]
 end
 
 function get_n_neighboring_waters(coords::AbstractMatrix, labels::AbstractVector, special_index::Int, num_neighbors::Int)
