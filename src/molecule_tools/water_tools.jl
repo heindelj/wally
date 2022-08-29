@@ -407,7 +407,6 @@ function has_hemibonded_structure(coords::AbstractMatrix{T}, labels::AbstractVec
             if r_OO > 2.38 && r_OO < 2.92
                 if α > 52.0 && α < 137.0
                     if χ > 20.0 && χ < 60.0
-                        #println(string(r_OO, " ", α, " ", χ))
                         return length(hydroxide_indices) + 3*(j-1) + 1
                     end
                 end

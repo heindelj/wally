@@ -91,7 +91,7 @@ function build_cluster(geom::AbstractMatrix{Float64}, labels::AbstractVector{Str
     return Cluster(cluster_centers, cluster_indices, geom, labels)
 end
 
-function find_n_nearest_neighbors(cluster::Cluster, center_indices::Vector{Int}, n::Int)
+function find_n_nearest_neighbors(cluster::Cluster, center_indices::Vector{Int}, n::Int, sortres::Bool=true)
     """
     Finds the n nearest neighbors for a collection of indices.
     The center_indices are the indices for the cluster, not the geometry
@@ -99,7 +99,7 @@ function find_n_nearest_neighbors(cluster::Cluster, center_indices::Vector{Int},
     indices is by looking up based on the molecular formula.
     """
     nl = KDTree(cluster.centers)
-    neighbor_indices, _ = knn(nl, cluster.centers[center_indices], n+1) # the self of something is counted as a neighbor so add one to number requested
+    neighbor_indices, _ = knn(nl, cluster.centers[center_indices], n+1, sortres) # the self of something is counted as a neighbor so add one to number requested
     labels_out = Vector{Vector{String}}()
     geoms_out = Vector{Matrix{Float64}}()
     for i in 1:length(neighbor_indices)
@@ -123,9 +123,9 @@ function molecules_by_formula(cluster::Cluster, chemical_formula::Vector{String}
     @assert false "Did not find any molecules matching the requested chemical formula."
 end
 
-function find_n_nearest_neighbors(cluster::Cluster, chemical_formula::Vector{String}, n::Int)
+function find_n_nearest_neighbors(cluster::Cluster, chemical_formula::Vector{String}, n::Int, sortres::Bool=true)
     molecule_indices = molecules_by_formula(cluster, chemical_formula)
-    return find_n_nearest_neighbors(cluster, molecule_indices, n)
+    return find_n_nearest_neighbors(cluster, molecule_indices, n, sortres)
 end
 
 function write_n_nearest_neighbors(geoms::AbstractVector{Matrix{Float64}}, labels::AbstractVector{Vector{String}}, chemical_formula::Vector{String}, n::Int, file_name::String="subclusters.xyz")

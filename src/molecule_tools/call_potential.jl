@@ -4,8 +4,105 @@ include("read_xyz.jl")
 
 using Libdl
 using Base.Filesystem
+using LinearAlgebra
 
 abstract type AbstractPotential end
+
+struct MultiPotential <: AbstractPotential
+    potentials::Vector{AbstractPotential}
+end
+
+function get_energy_and_gradients(mp::MultiPotential, coords::AbstractMatrix)
+    energy = 0.0
+    grads = zero(coords)
+    for potential in mp.potentials
+        energy_temp, grads_temp = get_energy_and_gradients(potential, coords)
+        energy += energy_temp
+        @views grads[:,:] += grads_temp
+    end
+    return energy, grads
+end
+
+struct WCACubicConfinement <: AbstractPotential
+    # should also include a center, but for now just assume centered at origin
+    # Using a cube instead of sphere because the forces are easier to calculate.
+    side_length::Float64
+    σ::Float64
+    ϵ::Float64
+end
+
+
+function get_energy_and_gradients(potential::WCACubicConfinement, coords::AbstractMatrix)
+    grads = zero(coords)
+    energy = 0.0
+    for i in 1:size(coords, 2)
+        for w in 1:size(coords, 1)
+            if coords[w, i] > potential.side_length
+                dist_past_box = coords[w, i] - potential.side_length
+                σ_over_r_6 = (potential.σ / (dist_past_box-2^(1/6)*potential.σ))^6
+                energy += 4.0 * potential.ϵ * (σ_over_r_6^2 - σ_over_r_6) + potential.ϵ
+                g_iw = -24.0 * potential.ϵ * (2.0 * σ_over_r_6^2 - σ_over_r_6) / (dist_past_box - 2^(1/6) * potential.σ)
+                grads[w,i] += g_iw
+            elseif coords[w, i] < -potential.side_length
+                dist_past_box = -potential.side_length - coords[w, i]
+                σ_over_r_6 = (potential.σ / (dist_past_box-2^(1/6)*potential.σ))^6
+                energy += 4.0 * potential.ϵ * (σ_over_r_6^2 - σ_over_r_6) + potential.ϵ
+                g_iw = -24.0 * potential.ϵ * (2.0 * σ_over_r_6^2 - σ_over_r_6) / (dist_past_box - 2^(1/6) * potential.σ)
+                grads[w,i] -= g_iw
+            end
+        end
+    end
+    return energy, grads
+end
+
+struct LennardJones <: AbstractPotential
+    σ::Float64
+    ϵ::Float64
+end
+
+function get_energy_and_gradients(potential::LennardJones, coords::AbstractMatrix)
+    grads = zero(coords)
+    energy = 0.0
+    for i in 1:(size(coords, 2)-1)
+        for j in (i+1):size(coords, 2)
+            @views r_ij = coords[:,i] - coords[:,j]
+            σ_over_r_6 = (potential.σ / norm(r_ij))^6
+            energy += 4.0 * potential.ϵ * (σ_over_r_6^2 - σ_over_r_6)
+            g_ij = -24.0 * potential.ϵ * (2.0 * σ_over_r_6^2 - σ_over_r_6) / norm(r_ij)^2 * r_ij
+            @views grads[:,i] +=  g_ij
+            @views grads[:,j] -=  g_ij
+        end
+    end
+    return energy, grads
+end
+
+function get_energy(potential::LennardJones, coords::AbstractMatrix)
+    energy = 0.0
+    for i in 1:(size(coords, 2)-1)
+        for j in (i+1):size(coords, 2)
+            @views r_ij = coords[:,i] - coords[:,j]
+            σ_over_r_6 = (potential.σ / norm(r_ij))^6
+            energy += 4.0 * potential.ϵ * (σ_over_r_6^2 - σ_over_r_6)
+        end
+    end
+    return energy
+end
+
+function finite_difference(potential::AbstractPotential, coords::Matrix{Float64}, step_size=1e-5)
+    grads = zero(coords)
+    for i in 1:size(coords, 2)
+        for j in 1:size(coords,1)
+            coords[j,i] += step_size
+            f_plus_h = get_energy(potential, coords)
+            coords[j,i] -= 2 * step_size
+            f_minus_h = get_energy(potential, coords)
+            coords[j,i] += step_size
+
+            grads[j,i] = (f_plus_h - f_minus_h) / (2 * step_size)
+        end
+    end
+    return grads
+end
 
 ########################
 ###    TTM Water     ###
@@ -245,7 +342,7 @@ end
 ###      NWChem      ###
 ########################
 include("nwchem_input_generator.jl")
-include("nwchem_parser.jl")
+include("electronic_structure_parsers.jl")
 
 struct NWChem <: AbstractPotential
     executable_command::Vector{String}
@@ -271,7 +368,7 @@ function get_energy(nwchem::NWChem, coords::Matrix{T}, atom_labels::Vector{Strin
     # the above blocks until the job is finished which is what we want so we can read in the file on the next line
     nwchem_output = string.(split(output_string, '\n'))
     
-    energies = parse_energies(nwchem_output)
+    energies = parse_nwchem_energies(nwchem_output)
     if return_dict
         return energies
     elseif length(nwchem.nwchem_input.theory) == 1
@@ -292,7 +389,7 @@ function get_energy(nwchem::NWChem, coords::Vector{Matrix{T}}, atom_labels::Vect
     # the above blocks until the job is finished which is what we want so we can read in the file on the next line
     nwchem_output = string.(split(output_string, '\n'))
     
-    energies = parse_energies(nwchem_output)
+    energies = parse_nwchem_energies(nwchem_output)
     if return_dict
         return energies
     elseif length(nwchem.nwchem_input.theory) == 1
@@ -313,8 +410,8 @@ function get_energy_and_gradients(nwchem::NWChem, coords::Matrix{T}, atom_labels
     # the above blocks until the job is finished which is what we want so we can read in the file on the next line
     nwchem_output = string.(split(output_string, '\n'))
     
-    energies  = parse_energies(nwchem_output)
-    gradients = parse_gradients(nwchem_output)
+    energies  = parse_nwchem_energies(nwchem_output)
+    gradients = parse_nwchem_gradients(nwchem_output)
     if return_dict
         return energies, gradients
     elseif length(nwchem.nwchem_input.theory) == 1
@@ -333,8 +430,8 @@ function get_energy_and_gradients(nwchem::NWChem, coords::Vector{Matrix{T}}, ato
     # the above blocks until the job is finished which is what we want so we can read in the file on the next line
     nwchem_output = readlines(output_name)
     
-    energies  = parse_energies(nwchem_output)
-    gradients = parse_gradients(nwchem_output)
+    energies  = parse_nwchem_energies(nwchem_output)
+    gradients = parse_nwchem_gradients(nwchem_output)
     if return_dict
         return energies, gradients
     elseif length(nwchem.nwchem_input.theory) == 1
@@ -374,9 +471,9 @@ function get_bsse_corrected_energy(nwchem::NWChem, coords::Vector{Matrix{T}}, at
     
     all_energies = Float64[]
     if separate_files_for_bsse
-        all_energies = [parse_energies(nwchem_outputs[i])[nwchem.nwchem_input.theory[1]][1] for i in 1:length(nwchem_outputs)]
+        all_energies = [parse_nwchem_energies(nwchem_outputs[i])[nwchem.nwchem_input.theory[1]][1] for i in 1:length(nwchem_outputs)]
     else
-        all_energies = parse_energies(nwchem_outputs[1])[nwchem.nwchem_input.theory[1]]
+        all_energies = parse_nwchem_energies(nwchem_outputs[1])[nwchem.nwchem_input.theory[1]]
     end
     # now combine everything into one bsse-corrected energy
     return @views(all_energies[1] + sum(all_energies[2:(length(coords)+1)] - all_energies[(length(coords)+2):(2*length(coords)+1)]))
@@ -411,11 +508,11 @@ function get_bsse_corrected_energy_and_gradients(nwchem::NWChem, coords::Vector{
     all_energies = Float64[]
     all_gradients = Matrix{Float64}[]
     if separate_files_for_bsse
-        all_energies = [parse_energies(nwchem_outputs[i])[nwchem.nwchem_input.theory[1]][1] for i in 1:length(nwchem_outputs)]
+        all_energies = [parse_nwchem_energies(nwchem_outputs[i])[nwchem.nwchem_input.theory[1]][1] for i in 1:length(nwchem_outputs)]
         all_gradients = [parse_gradients(nwchem_outputs[i])[nwchem.nwchem_input.theory[1]][1] for i in 1:length(nwchem_outputs)]
     else
-        all_energies = parse_energies(nwchem_outputs[1])[nwchem.nwchem_input.theory[1]]
-        all_gradients = parse_gradients(nwchem_outputs[1])[nwchem.nwchem_input.theory[1]]
+        all_energies = parse_nwchem_energies(nwchem_outputs[1])[nwchem.nwchem_input.theory[1]]
+        all_gradients = parse_nwchem_gradients(nwchem_outputs[1])[nwchem.nwchem_input.theory[1]]
     end
     # now combine everything into one bsse-corrected energy and gradients
     return @views(all_energies[1] + sum(all_energies[2:(length(coords)+1)] - all_energies[(length(coords)+2):(2*length(coords)+1)])), @views(all_gradients[1] + hcat(all_gradients[2:(length(coords)+1)]...) - sum(all_gradients[(length(coords)+2):(2*length(coords)+1)]))
@@ -436,4 +533,44 @@ function get_approximate_bsse_corrected_gradients!(nwchem::NWChem, grads::Matrix
     Note that the approximate_bsse_correction_function should return approximate BSSE-corrected gradients for the entire system, not just particular atom pairs.
     """
     grads[:] = get_energy_and_gradients(nwchem, coords, atom_labels)[2] + approximate_bsse_correction_function(coords, atom_labels)
+end
+
+############################
+########## Q-Chem ##########
+############################
+
+struct QChem <: AbstractPotential
+    executable_command::Vector{String}
+    rem_input::String
+    labels::Vector{String}
+    charge::Int
+    multiplicity::Int
+    ofile_name::String
+    QChem(executable_command::String, rem_input::String, xyz_file::String, charge::Int, multiplicity::Int, ofile_name::String) = new(split(executable_command), read(rem_input, String), read_xyz(xyz_file)[2][1], charge, multiplicity, ofile_name)
+end
+
+function get_energy_and_gradients(qchem::QChem, coords::Matrix{Float64})
+    geom_string = geometry_to_string(coords, qchem.labels)
+    used_input_name = next_unique_name(qchem.ofile_name)
+    open(used_input_name, "w") do io
+        write(io, "\$molecule\n")
+        write(io, string(qchem.charge, " ", qchem.multiplicity, "\n"))
+        write(io, geom_string)
+        write(io, "\$end\n\n")
+        write(io, qchem.rem_input)
+    end
+    
+    output_name = string(splitext(used_input_name)[1], ".out")
+    output_string = read(pipeline(`$(qchem.executable_command) $(used_input_name)`), String)
+
+    # write out the the results for future reference
+    open(output_name, "w") do io
+        write(io, output_string)
+    end
+    qchem_output = readlines.(output_name)
+
+    energy = parse_qchem_energies(qchem_output)
+    gradients = parse_qchem_gradients(qchem_output)
+
+    return energy["dft"][1], gradients["dft"][1]
 end
