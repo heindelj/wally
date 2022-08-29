@@ -62,6 +62,9 @@ function read_xyz(ifile::String; T::Type=Float64, static::Bool=false, start_at_N
             if length(header) == load_N_frames
                 break
             end
+            if (length(header) % 500) == 0
+                println(string("Finished reading ", length(header), " structures."))
+            end
         end
     end
 

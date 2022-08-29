@@ -1,4 +1,4 @@
-using StaticArrays, NearestNeighbors
+using StaticArrays, NearestNeighbors, ProgressBars
 using StatsBase: countmap
 include("covalent_radii.jl")
 include("molecular_axes.jl")
@@ -129,21 +129,26 @@ function find_n_nearest_neighbors(cluster::Cluster, chemical_formula::Vector{Str
 end
 
 function write_n_nearest_neighbors(geoms::AbstractVector{Matrix{Float64}}, labels::AbstractVector{Vector{String}}, chemical_formula::Vector{String}, n::Int, file_name::String="subclusters.xyz")
-    labels_out = Vector{String}[]
-    geoms_out  = Matrix{Float64}[]
-    l = ReentrantLock()
-    Threads.@threads for i in 1:length(geoms)
+    labels_out = [Vector{String}[] for _ in 1:Threads.nthreads()]
+    geoms_out  = [Matrix{Float64}[] for _ in 1:Threads.nthreads()]
+    Threads.@threads for i in ProgressBar(1:length(geoms))
         id = Threads.threadid()
         cluster = build_cluster(geoms[i], labels[i])
         labels_frame, geoms_frame = find_n_nearest_neighbors(cluster, chemical_formula, n)
-        lock(l)
-        try
-            append!(labels_out, labels_frame)
-            append!(geoms_out, geoms_frame)
-        finally
-            unlock(l)
+        append!(labels_out[id], labels_frame)
+        append!(geoms_out[id], geoms_frame)
+        
+        if (i % 200) == 0
+            final_labels_out = Vector{String}[]
+            final_geoms_out = Matrix{Float64}[]
+            append!.((final_labels_out,), labels_out)
+            append!.((final_geoms_out,), geoms_out)
+            write_xyz(file_name, [string(length(final_labels_out[j]), "\n") for j in 1:length(final_labels_out)], final_labels_out, final_geoms_out)
         end
     end
-
-    write_xyz(file_name, [string(length(labels_out[i]), "\n") for i in 1:length(labels_out)], labels_out, geoms_out)
+    final_labels_out = Vector{String}[]
+    final_geoms_out = Matrix{Float64}[]
+    append!.((final_labels_out,), labels_out)
+    append!.((final_geoms_out,), geoms_out)
+    write_xyz(file_name, [string(length(final_labels_out[j]), "\n") for j in 1:length(final_labels_out)], final_labels_out, final_geoms_out)
 end
