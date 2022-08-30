@@ -561,7 +561,13 @@ function get_energy_and_gradients(qchem::QChem, coords::Matrix{Float64})
     end
     
     output_name = string(splitext(used_input_name)[1], ".out")
-    output_string = read(pipeline(`$(qchem.executable_command) $(used_input_name)`), String)
+    try
+        read(pipeline(`$(qchem.executable_command) $(used_input_name) $(output_name)`), String)
+    catch LoadError
+        # only get here because of q-chem exiting with the wrong status
+    end
+
+    output_string = read(output_name, String)
 
     # write out the the results for future reference
     open(output_name, "w") do io
