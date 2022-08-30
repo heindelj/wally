@@ -15,6 +15,7 @@ mutable struct Simulation <: AbstractSimulation
     labels::Vector{String}
     masses::Vector{Float64}
     potential::AbstractPotential
+    ofile::String
     write_every::Int
 end
 
@@ -24,9 +25,9 @@ function run_simulation!(sim::Simulation)
                    sim.forces, sim.masses, sim.potential)
         if (i_step - 1) % sim.write_every == 0
             if i_step == 1
-                write_xyz("simulation_output.xyz", [string(length(sim.masses), "\nV = ", energy, " E_kin = ", get_kinetic_energy(sim.velocities, sim.masses), " T = ", get_temperature(sim.velocities, sim.masses))], [sim.labels], [sim.coords])
+                write_xyz(sim.ofile, [string(length(sim.masses), "\nV = ", energy, " E_kin = ", get_kinetic_energy(sim.velocities, sim.masses), " T = ", get_temperature(sim.velocities, sim.masses))], [sim.labels], [sim.coords])
             else
-                write_xyz("simulation_output.xyz", [string(length(sim.masses), "\nV = ", energy, " E_kin = ", get_kinetic_energy(sim.velocities, sim.masses), " T = ", get_temperature(sim.velocities, sim.masses) * 315775.0248)], [sim.labels], [sim.coords], append=true)
+                write_xyz(sim.ofile, [string(length(sim.masses), "\nV = ", energy, " E_kin = ", get_kinetic_energy(sim.velocities, sim.masses), " T = ", get_temperature(sim.velocities, sim.masses) * 315775.0248)], [sim.labels], [sim.coords], append=true)
             end
         end
     end
@@ -68,7 +69,7 @@ function take_step!(integrator::LangevinThermostat, coords::Matrix{Float64}, vel
                            get_accelerations(forces, masses) * integrator.dt .+
                            (integrator.sqrtb ./ (2 * masses))' .*
                            (integrator.gaussian_noise + old_gaussian_noise))
-        coords[:,:] += integrator.sqrtb' .* velocities * integrator.dt
+        coords[:,:] += integrator.sqrtb' .* velocities * integrator.dt * conversion(:bohr, :angstrom)
         energy, grads = get_energy_and_gradients(potential, coords)
         forces[:,:] = -grads
         return energy
