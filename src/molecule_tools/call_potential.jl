@@ -545,13 +545,13 @@ struct QChem <: AbstractPotential
     labels::Vector{String}
     charge::Int
     multiplicity::Int
-    ofile_name::String
-    QChem(executable_command::String, rem_input::String, xyz_file::String, charge::Int, multiplicity::Int, ofile_name::String) = new(split(executable_command), read(rem_input, String), read_xyz(xyz_file)[2][1], charge, multiplicity, ofile_name)
+    infile_name::String
+    QChem(executable_command::String, rem_input::String, xyz_file::String, charge::Int, multiplicity::Int, infile_name::String) = new(split(executable_command), read(rem_input, String), read_xyz(xyz_file)[2][1], charge, multiplicity, infile_name)
 end
 
 function get_energy_and_gradients(qchem::QChem, coords::Matrix{Float64})
     geom_string = geometry_to_string(coords, qchem.labels)
-    used_input_name = next_unique_name(qchem.ofile_name)
+    used_input_name = next_unique_name(qchem.infile_name)
     open(used_input_name, "w") do io
         write(io, "\$molecule\n")
         write(io, string(qchem.charge, " ", qchem.multiplicity, "\n"))
