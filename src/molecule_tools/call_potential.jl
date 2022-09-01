@@ -23,6 +23,55 @@ function get_energy_and_gradients(mp::MultiPotential, coords::AbstractMatrix)
     return energy, grads
 end
 
+function get_energy(mp::MultiPotential, coords::AbstractMatrix)
+    energy = 0.0
+    for potential in mp.potentials
+        energy_temp = get_energy(potential, coords)
+        energy += energy_temp
+    end
+    return energy
+end
+
+struct HarmonicCubicConfinement <: AbstractPotential
+    side_length::Float64
+    k::Float64
+end
+
+function get_energy_and_gradients(potential::HarmonicCubicConfinement, coords::AbstractMatrix)
+    grads = zero(coords)
+    energy = 0.0
+    for i in 1:size(coords, 2)
+        for w in 1:size(coords, 1)
+            if coords[w, i] > potential.side_length
+                dist_past_box = coords[w, i] - potential.side_length
+                energy += 0.5 * potential.k * dist_past_box^2
+                grads[w, i] += potential.k * dist_past_box
+            elseif coords[w, i] < -potential.side_length
+                dist_past_box = abs(potential.side_length + coords[w, i])
+                energy += 0.5 * potential.k * dist_past_box^2
+                grads[w, i] += -potential.k * dist_past_box # minus sign because on negative side of box
+            end
+        end
+    end
+    return energy, grads
+end
+
+function get_energy(potential::HarmonicCubicConfinement, coords::AbstractMatrix)
+    energy = 0.0
+    for i in 1:size(coords, 2)
+        for w in 1:size(coords, 1)
+            if coords[w, i] > potential.side_length
+                dist_past_box = coords[w, i] - potential.side_length
+                energy += 0.5 * potential.k * dist_past_box^2
+            elseif coords[w, i] < -potential.side_length
+                dist_past_box = abs(potential.side_length + coords[w, i])
+                energy += 0.5 * potential.k * dist_past_box^2
+            end
+        end
+    end
+    return energy
+end
+
 struct WCACubicConfinement <: AbstractPotential
     # should also include a center, but for now just assume centered at origin
     # Using a cube instead of sphere because the forces are easier to calculate.
@@ -39,20 +88,38 @@ function get_energy_and_gradients(potential::WCACubicConfinement, coords::Abstra
         for w in 1:size(coords, 1)
             if coords[w, i] > potential.side_length
                 dist_past_box = coords[w, i] - potential.side_length
-                σ_over_r_6 = (potential.σ / (dist_past_box-2^(1/6)*potential.σ))^6
+                σ_over_r_6 = (potential.σ / dist_past_box)^6
                 energy += 4.0 * potential.ϵ * (σ_over_r_6^2 - σ_over_r_6) + potential.ϵ
-                g_iw = -24.0 * potential.ϵ * (2.0 * σ_over_r_6^2 - σ_over_r_6) / (dist_past_box - 2^(1/6) * potential.σ)
+                g_iw = -24.0 * potential.ϵ * (2.0 * σ_over_r_6^2 - σ_over_r_6) / dist_past_box
                 grads[w,i] += g_iw
             elseif coords[w, i] < -potential.side_length
-                dist_past_box = -potential.side_length - coords[w, i]
+                dist_past_box = potential.side_length - coords[w, i]
                 σ_over_r_6 = (potential.σ / (dist_past_box-2^(1/6)*potential.σ))^6
                 energy += 4.0 * potential.ϵ * (σ_over_r_6^2 - σ_over_r_6) + potential.ϵ
                 g_iw = -24.0 * potential.ϵ * (2.0 * σ_over_r_6^2 - σ_over_r_6) / (dist_past_box - 2^(1/6) * potential.σ)
-                grads[w,i] -= g_iw
+                grads[w,i] -= g_iw # minus sign because we are on the negative wall
             end
         end
     end
     return energy, grads
+end
+
+function get_energy(potential::WCACubicConfinement, coords::AbstractMatrix)
+    energy = 0.0
+    for i in 1:size(coords, 2)
+        for w in 1:size(coords, 1)
+            if coords[w, i] > potential.side_length
+                dist_past_box = coords[w, i] - potential.side_length
+                σ_over_r_6 = (potential.σ / (dist_past_box-2^(1/6)*potential.σ))^6
+                energy += 4.0 * potential.ϵ * (σ_over_r_6^2 - σ_over_r_6) + potential.ϵ
+            elseif coords[w, i] < -potential.side_length
+                dist_past_box = potential.side_length - coords[w, i]
+                σ_over_r_6 = (potential.σ / (dist_past_box-2^(1/6)*potential.σ))^6
+                energy += 4.0 * potential.ϵ * (σ_over_r_6^2 - σ_over_r_6) + potential.ϵ
+            end
+        end
+    end
+    return energy
 end
 
 struct LennardJones <: AbstractPotential

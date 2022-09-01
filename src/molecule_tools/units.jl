@@ -15,7 +15,10 @@ function conversion(unit1::Symbol, unit2::Symbol)
         :au_mass      => 1822.88839,
         # temperature
         :au_temperature => 1.0,
-        :kelvin         => 315774.659
+        :kelvin         => 315774.659,
+        # time
+        :fs           => 0.02418884254,
+        :au_time      => 1.0
     )
     return units[unit2] / units[unit1]
 end
