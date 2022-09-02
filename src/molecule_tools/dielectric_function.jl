@@ -170,10 +170,19 @@ function get_cavity_dielectric_function(coords::Matrix{Float64}, labels::Vector{
     is_in_cavity = r::SVector{3, Float64} -> ellipsoid(r, com, abc) < 1.0
 
     grid_length = 2.0 * (maximum(abc) + buffer)
+    
+    # The grid is constrained such that each dimension has an odd number of points
+    # and Nx-1, Ny-1, and Nz-1 are divisible by 8.
+    # We find a grid spacing similar to the requested grid spacing which
+    # satisfies those constraints 
+    num_grid_points = 65
+    while grid_length / num_grid_points > grid_spacing
+        num_grid_points += 8
+    end
 
-    grid_x = LinRange((com[1]-0.5*grid_length):grid_spacing:(com[1]+0.5*grid_length))
-    grid_y = LinRange((com[2]-0.5*grid_length):grid_spacing:(com[2]+0.5*grid_length))
-    grid_z = LinRange((com[3]-0.5*grid_length):grid_spacing:(com[3]+0.5*grid_length))
+    grid_x = LinRange((com[1]-0.5*grid_length), (com[1]+0.5*grid_length), num_grid_points)
+    grid_y = LinRange((com[2]-0.5*grid_length), (com[2]+0.5*grid_length), num_grid_points)
+    grid_z = LinRange((com[3]-0.5*grid_length), (com[3]+0.5*grid_length), num_grid_points)
 
 	static_coords = [SVector{3, Float64}(coords[:,i]) for i in 1:size(coords, 2)]
     de = DielectricFunction(grid_x, grid_y, grid_z)
@@ -204,9 +213,18 @@ function get_interfacial_cavity_dielectric_function(coords::Matrix{Float64}, lab
 
     grid_length = 2.0 * (maximum(abc) + buffer)
 
-    grid_x = LinRange((com[1]-0.5*grid_length):grid_spacing:(com[1]+0.5*grid_length))
-    grid_y = LinRange((com[2]-0.5*grid_length):grid_spacing:(com[2]+0.5*grid_length))
-    grid_z = LinRange((com[3]-0.5*grid_length):grid_spacing:(com[3]+0.5*grid_length))
+    # The grid is constrained such that each dimension has an odd number of points
+    # and Nx-1, Ny-1, and Nz-1 are divisible by 8.
+    # We find a grid spacing similar to the requested grid spacing which
+    # satisfies those constraints 
+    num_grid_points = 65
+    while grid_length / num_grid_points > grid_spacing
+        num_grid_points += 8
+    end
+
+    grid_x = LinRange((com[1]-0.5*grid_length), (com[1]+0.5*grid_length), num_grid_points)
+    grid_y = LinRange((com[2]-0.5*grid_length), (com[2]+0.5*grid_length), num_grid_points)
+    grid_z = LinRange((com[3]-0.5*grid_length), (com[3]+0.5*grid_length), num_grid_points)
 
 	static_coords = [SVector{3, Float64}(coords[:,i]) for i in 1:size(coords, 2)]
     de = DielectricFunction(grid_x, grid_y, grid_z)
