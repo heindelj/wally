@@ -143,16 +143,12 @@ function interfacial_dielectric(r::SVector{3, Float64}, α::Float64, z_gds::Floa
     if the point is inside the GDS. Otherwise we treat the system as a slab, in which case
     we just compare r_z to z_gds.
     """
+    # note, the ϵ-1.0 and adding 1.0 at the end should replace 1.0
+    # with ϵ_vac in general.
     if treat_as_sphere
-        #if norm(r) < z_gds
-            return 0.5 * ϵ_solv * (1.0 - tanh(α * (norm(r) - z_gds)))
-        #end
-        #return 0.5 * ϵ_solv * (1.0 + tanh(α * (norm(r) - z_gds)))
+        return 0.5 * (ϵ_solv - 1.0) * (1.0 - tanh(α * (norm(r) - z_gds))) + 1.0
     else
-        if r[3] < z_gds
-            return 0.5 * ϵ_solv * (1.0 + tanh(α * (r[3] - z_gds)))
-        end
-        return 0.5 * ϵ_solv * (1.0 - tanh(α * (r[3] - z_gds)))
+        return 0.5 * (ϵ_solv - 1.0) * (1.0 - tanh(α * (r[3] - z_gds))) + 1.0
     end
 end
 
@@ -218,6 +214,18 @@ function get_interfacial_cavity_dielectric_function(coords::Matrix{Float64}, lab
     cavity_and_interface_dielectric!(de, static_coords, labels, ϵ_solv, ϵ_vac, get_ϵ_surr)
 
     return de
+end
+
+function write_dielectric_function(de::DielectricFunction, ofile::String)
+    open(ofile, "w") do io
+        for i_x in 1:length(de.grid_x)
+            for i_y in 1:length(de.grid_y)
+                for i_z in 1:length(de.grid_z)
+                    write(io, string(de.grid_x[i_x], " ", de.grid_y[i_y], " ", de.grid_z[i_z], " ", de.ϵ[i_x, i_y, i_z], "\n"))
+                end
+            end
+        end
+    end
 end
 
 function plot_dielectric_cross_section(de::DielectricFunction, y_index::Int)
