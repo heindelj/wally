@@ -1,5 +1,6 @@
 include("vdw_radii.jl")
 include("molecular_axes.jl")
+include("nwchem_input_generator.jl")
 using StaticArrays, SpecialFunctions, LinearAlgebra, ProgressBars, GLMakie
 
 # This file contains functions needed to discretize the dielectric function
@@ -192,7 +193,7 @@ function get_cavity_dielectric_function(coords::Matrix{Float64}, labels::Vector{
     return de
 end
 
-function get_interfacial_cavity_dielectric_function(coords::Matrix{Float64}, labels::Vector{String}, ϵ_solv::Float64, ϵ_vac::Float64, α::Float64, z_gds::Float64, treat_as_sphere::Bool, grid_spacing::Float64=0.2, Δ::Float64=0.265, buffer::Float64=4.0)
+function get_interfacial_cavity_dielectric_function(coords::Matrix{Float64}, labels::Vector{String}, ϵ_solv::Float64, ϵ_vac::Float64, α::Float64, z_gds::Float64, treat_as_sphere::Bool, grid_spacing::Float64=0.2, Δ::Float64=0.265, buffer::Float64=5.5)
     """
     Automatically chooses the grid with spacing given by grid_spacing
     by computing the centroid of the given coordinates and ensuring
@@ -234,8 +235,8 @@ function get_interfacial_cavity_dielectric_function(coords::Matrix{Float64}, lab
     return de
 end
 
-function write_dielectric_function(de::DielectricFunction, ofile::String)
-    open(ofile, "w") do io
+function write_dielectric_function(de::DielectricFunction, ofile::String; mode::String="w")
+    open(ofile, mode) do io
         for i_x in 1:length(de.grid_x)
             for i_y in 1:length(de.grid_y)
                 for i_z in 1:length(de.grid_z)
@@ -243,6 +244,62 @@ function write_dielectric_function(de::DielectricFunction, ofile::String)
                 end
             end
         end
+    end
+end
+
+function write_qchem_peqs_vie_input_file(geom::Matrix{Float64}, labels::Vector{String}, de::DielectricFunction, ofile::String)
+    # write the reference part of the input file
+    open(ofile, "w") do io
+        write(io, string("\$molecule\n-1 1\n", geometry_to_string(geom, labels), "\$end"))
+        write(io, string("\n\n\$rem\n"))
+        write(io, string("  SCF_CONVERGENCE   7\n"))
+        write(io, string("  THRESH   14\n"))
+        write(io, string("  method   wb97m-v\n"))
+        write(io, string("  unrestricted   1\n"))
+        write(io, string("  basis   aug-cc-pvdz\n"))
+        write(io, string("  SOLVENT_METHOD   PEQS\n"))
+        write(io, string("  PEQS_SWITCH   3\n"))
+        write(io, string("\$end\n"))
+        write(io, string("\$peqs\n"))
+        write(io, string("  SOLUTECAVITY   ARBITRARY\n"))
+        write(io, string("  NONEQUILJOB   TRUE\n"))
+        write(io, string("  NONEQUILSTATE   REFERENCE\n"))
+        write(io, string("\$end\n\n"))
+        write(io, string("\$peqs_grid\n"))
+        write(io, string("DimX ", length(de.grid_x), " ", de.grid_x[begin], " ", de.grid_x[end], "\n"))
+        write(io, string("DimY ", length(de.grid_y), " ", de.grid_y[begin], " ", de.grid_y[end], "\n"))
+        write(io, string("DimZ ", length(de.grid_z), " ", de.grid_z[begin], " ", de.grid_z[end], "\n"))
+        write(io, string("\$end\n\n"))
+        write(io, string("\$epsilon\n"))
+    end
+    write_dielectric_function(de, ofile, mode="a")
+    open(ofile, "a") do io
+        write(io, "\$end\n@@@\n")
+        write(io, string("\$molecule\n0 2\n", geometry_to_string(geom, labels), "\$end"))
+        write(io, string("\n\n\$rem\n"))
+        write(io, string("  SCF_CONVERGENCE   7\n"))
+        write(io, string("  THRESH   14\n"))
+        write(io, string("  method   wb97m-v\n"))
+        write(io, string("  unrestricted   1\n"))
+        write(io, string("  basis   aug-cc-pvdz\n"))
+        write(io, string("  SOLVENT_METHOD   PEQS\n"))
+        write(io, string("  PEQS_SWITCH   3\n"))
+        write(io, string("\$end\n"))
+        write(io, string("\$peqs\n"))
+        write(io, string("  SOLUTECAVITY   ARBITRARY\n"))
+        write(io, string("  NONEQUILJOB   TRUE\n"))
+        write(io, string("  NONEQUILSTATE   IONIZED\n"))
+        write(io, string("\$end\n\n"))
+        write(io, string("\$peqs_grid\n"))
+        write(io, string("DimX ", length(de.grid_x), " ", de.grid_x[begin], " ", de.grid_x[end], "\n"))
+        write(io, string("DimY ", length(de.grid_y), " ", de.grid_y[begin], " ", de.grid_y[end], "\n"))
+        write(io, string("DimZ ", length(de.grid_z), " ", de.grid_z[begin], " ", de.grid_z[end], "\n"))
+        write(io, string("\$end\n\n"))
+        write(io, string("\$epsilon\n"))
+    end
+    write_dielectric_function(de, ofile, mode="a")
+    open(ofile, "a") do io
+        write(io, "\$end")
     end
 end
 
