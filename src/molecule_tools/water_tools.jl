@@ -155,7 +155,7 @@ function sort_waters(coords::AbstractMatrix, labels::AbstractVector; to_angstrom
     """
     @assert isinteger(length(labels) / 3) "Number of atoms not divisible by 3. Can't be only waters."
     
-    distance_condition::Float64 = 1.4 # ansgtroms
+    distance_condition::Float64 = 1.35 # ansgtroms
     if to_angstrom
         distance_condition *= conversion(:angstrom, :bohr)
     end
@@ -190,67 +190,115 @@ function sort_waters(coords::AbstractMatrix, labels::AbstractVector; to_angstrom
 end
 
 function sort_water_cluster(coords::AbstractMatrix, labels::AbstractVector, to_angstrom::Bool = false; return_permutation::Bool = false)
-    """
-    Sorts water clusters containing water, hydroxide, or hydronium
-	and puts H3O+ and OH- first. Then OHH sorted water.
-	"""
-    O_indices = Int[]
-	H_indices = Int[]
-    all_indices = Int[]
+    nl = build_cluster(coords, labels)
 
-	sorted_hydroxide_indices = Int[]
-	sorted_water_indices = Int[]
-	sorted_hydronium_indices = Int[]
-
-	distance_condition = 1.3
-	if to_angstrom
-		distance_condition *= conversion(:angstrom, :bohr)
+    sorted_indices = Int[]
+    for i in 1:length(nl.indices)
+        append!(sorted_indices, nl.indices[i])
     end
 
-	# get indices of each atom type
-	for i in 1:length(labels)
-		if labels[i] == "O" || labels[i] == "o"
-		    push!(O_indices, i)
-		elseif labels[i] == "H" || labels[i] == "h"
-		    push!(H_indices, i)
-	    else
-            push!(all_indices, i)
-	    end
-	end
+    hydronium_indices = molecules_by_formula(nl, ["O", "H", "H", "H"])
+    hydroxide_indices = molecules_by_formula(nl, ["O", "H"])
+    water_indices = setdiff(sorted_indices, hydronium_indices, hydroxide_indices)
 
-	indices_temp = Int[]
-    for O_index in O_indices
-        @views O_vec = coords[:, O_index]
-		push!(indices_temp, O_index)
-		for H_index in H_indices
-		    @views H_vec = coords[:, H_index]
-			if norm(O_vec - H_vec) < distance_condition
-                push!(indices_temp, H_index)
-		    end
+    # now we sort the indices into OHH order so that O always comes
+    # before its H atoms.
+    for i in 1:2:length(hydroxide_indices)
+        idx1 = hydroxide_indices[i]
+        idx2 = hydroxide_indices[i+1]
+        if labels[idx1] == "H"
+            hydroxide_indices[i] = idx2
+            hydroxide_indices[i+1] = idx1
         end
-
-		if length(indices_temp) == 2
-		    append!(sorted_hydroxide_indices, indices_temp)
-	    elseif length(indices_temp) == 3
-		    append!(sorted_water_indices, indices_temp)
-		elseif length(indices_temp) == 4
-		    append!(sorted_hydronium_indices, indices_temp)
-	    else
-		    @assert false "Found more than four hydrogen neighbors to an oxygen. Quitting. Fix your code."
-		    # need to handle the case that there are too many
-			# neighbors which shouldn't happen but probably could
-	    end
-		empty!(indices_temp)
     end
 
-	append!(sorted_hydroxide_indices, sorted_hydronium_indices)
-	append!(sorted_hydroxide_indices, sorted_water_indices)
-    append!(all_indices, sorted_hydroxide_indices)
+    # TODO: Add code to sub-sort the H3O+ and H2O parts like above.
+
+    final_indices = Int[]
+    append!(final_indices, hydroxide_indices)
+    append!(final_indices, hydronium_indices)
+    append!(final_indices, water_indices)
+
+
+    @assert length(final_indices) == length(labels) "Didn't correctly assign an atom to each molecule so we lost atoms when building the cluster or when filtering out the hydronium and hydroxide indices!"
+
 	if return_permutation
-		return all_indices
+		return final_indices
 	end
-	return labels[all_indices], coords[:, all_indices]
+	return labels[final_indices], coords[:, final_indices]
 end
+
+# function sort_water_cluster(coords::AbstractMatrix, labels::AbstractVector, to_angstrom::Bool = false; return_permutation::Bool = false)
+#     """
+#     Sorts water clusters containing water, hydroxide, or hydronium
+# 	and puts H3O+ and OH- first. Then OHH sorted water.
+# 	"""
+#     O_indices = Int[]
+# 	H_indices = Int[]
+#     all_indices = Int[]
+#
+# 	sorted_hydroxide_indices = Int[]
+# 	sorted_water_indices = Int[]
+# 	sorted_hydronium_indices = Int[]
+#
+#     used_indices = Int[]
+#
+# 	distance_condition = 1.4
+# 	if to_angstrom
+# 		distance_condition *= conversion(:angstrom, :bohr)
+#     end
+#
+# 	# get indices of each atom type
+# 	for i in 1:length(labels)
+# 		if labels[i] == "O" || labels[i] == "o"
+# 		    push!(O_indices, i)
+# 		elseif labels[i] == "H" || labels[i] == "h"
+# 		    push!(H_indices, i)
+# 	    else
+#             push!(all_indices, i)
+# 	    end
+# 	end
+#
+# 	indices_temp = Int[]
+#     for O_index in O_indices
+#         @views O_vec = coords[:, O_index]
+# 		push!(indices_temp, O_index)
+#         push!(used_indices, O_index)
+# 		for H_index in H_indices
+# 		    @views H_vec = coords[:, H_index]
+# 			if norm(O_vec - H_vec) < distance_condition
+#                 push!(indices_temp, H_index)
+#                 push!(used_indices, H_index)
+# 		    end
+#         end
+#
+# 		if length(indices_temp) == 2
+# 		    append!(sorted_hydroxide_indices, indices_temp)
+# 	    elseif length(indices_temp) == 3
+# 		    append!(sorted_water_indices, indices_temp)
+# 		elseif length(indices_temp) == 4
+# 		    append!(sorted_hydronium_indices, indices_temp)
+# 	    else
+# 		    @assert false "Found more than four hydrogen neighbors to an oxygen. Quitting. Fix your code."
+# 		    # need to handle the case that there are too many
+# 			# neighbors which shouldn't happen but probably could
+# 	    end
+# 		empty!(indices_temp)
+#     end
+#
+# 	append!(sorted_hydroxide_indices, sorted_hydronium_indices)
+# 	append!(sorted_hydroxide_indices, sorted_water_indices)
+#     append!(all_indices, sorted_hydroxide_indices)
+#
+#     unused_indices = setdiff(used_indices, all_indices)
+#
+#     @assert length(unused_indices) == 0 "Leftover indices! Need to assign these somehow."
+#
+# 	if return_permutation
+# 		return all_indices
+# 	end
+# 	return labels[all_indices], coords[:, all_indices]
+# end
 
 function get_n_neighboring_waters(coords::AbstractMatrix, labels::AbstractVector, special_index::Int, num_neighbors::Int)
     @assert labels[special_index] == "O" "Currently only support using an oxygen as the special index."

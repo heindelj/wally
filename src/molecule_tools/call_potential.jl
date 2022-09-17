@@ -5,6 +5,7 @@ include("read_xyz.jl")
 using Libdl
 using Base.Filesystem
 using LinearAlgebra
+using DelimitedFiles
 
 abstract type AbstractPotential end
 
@@ -646,4 +647,121 @@ function get_energy_and_gradients(qchem::QChem, coords::Matrix{Float64})
     gradients = parse_qchem_gradients(qchem_output)
 
     return energy["dft"][1], gradients["dft"][1]
+end
+
+############################
+########### xtb ############
+############################
+
+Base.@kwdef mutable struct XTB <: AbstractPotential
+    charge::Int = 0
+    multiplicity::Int = 1 # multiplicity
+    jobtype::String = "scc" # single point calculation
+    etemp::Float64 = 300 # electronic temperature
+    iterations::Int = 250
+    model::Int = 2 # GFN2, 1, or 0
+    last_output::Vector{String} = []
+end
+
+function parse_energy(xtb::XTB)
+    for i in length(xtb.last_output):-1:1
+        if occursin("TOTAL ENERGY", xtb.last_output[i])
+            return parse(Float64, split(xtb.last_output[i])[4])
+        end
+    end
+    return nothing
+end
+
+function parse_bond_orders(xtb::XTB)
+    start_index = 0
+    for i in length(xtb.last_output):-1:1
+        if occursin("WBO", xtb.last_output[i])
+            start_index = i + 2 # want to start two lines after this.
+        end
+    end
+
+    # get the number of atoms
+    natoms = 0
+    current_index = start_index
+    while true
+        line = xtb.last_output[current_index]
+        split_line = split(line)
+        if occursin("------", line)
+            break
+        elseif occursin("--", line)
+            natoms += 1
+        elseif length(split_line) > 3 && occursin("0.", split_line[4])
+            natoms += 1
+        end
+        current_index += 1
+    end
+
+    # parse the bond orders
+    BO_matrix = zeros(natoms, natoms)
+    current_index = start_index
+    # very convoluted parsing of the Wiber bond order
+    # print out from XTB
+    while !occursin("----", xtb.last_output[current_index])
+        line = xtb.last_output[current_index]
+        if occursin("--", line)
+            split_line = split(line)
+            idx1 = parse(Int, split_line[1])
+            idx2 = parse(Int, split_line[6])
+            BO_matrix[idx1, idx2] = parse(Float64, split_line[8])
+            BO_matrix[idx2, idx1] = BO_matrix[idx1, idx2]
+            if length(split_line) > 8
+                idx2 = parse(Int, split_line[9])
+                BO_matrix[idx1, idx2] = parse(Float64, split_line[11])
+                BO_matrix[idx2, idx1] = BO_matrix[idx1, idx2]
+            end
+            if length(split_line) > 11
+                idx2 = parse(Int, split_line[12])
+                BO_matrix[idx1, idx2] = parse(Float64, split_line[14])
+                BO_matrix[idx2, idx1] = BO_matrix[idx1, idx2]
+            end
+            if length(split_line) == 16
+                while true
+                    current_index += 1
+                    if !occursin(xtb.last_output[current_index], "--")
+                        split_line = split(xtb.last_output[current_index])
+                        idx2 = parse(Int, split_line[6])
+                        BO_matrix[idx1, idx2] = parse(Float64, split_line[3])
+                        BO_matrix[idx2, idx1] = BO_matrix[idx1, idx2]
+                        if length(split_line) > 3
+                            idx2 = parse(Int, split_line[4])
+                            BO_matrix[idx1, idx2] = parse(Float64, split_line[6])
+                            BO_matrix[idx2, idx1] = BO_matrix[idx1, idx2]
+                        end
+                        if length(split_line) > 6
+                            idx2 = parse(Int, split_line[7])
+                            BO_matrix[idx1, idx2] = parse(Float64, split_line[9])
+                            BO_matrix[idx2, idx1] = BO_matrix[idx1, idx2]
+                        end
+                    else
+                        current_index -= 1
+                        break
+                    end
+                end
+            end
+        else
+            # happens when a bond order is less than 0.1 (the cutoff) since
+            # xtb still wants to print a bond order for this atom
+            
+            # not sure what to do to handle this case.
+            # not easy to infer what the other index should be.
+            # just put it on the diagonal for now
+
+            split_line = split(line)
+            idx2 = parse(Int, split_line[1])
+            BO_matrix[idx2, idx2] = parse(Float64, split_line[4])
+        end
+        current_index += 1
+    end
+    return BO_matrix
+end
+
+function get_energy(xtb::XTB, coords::Matrix{Float64}, labels::Vector{String})
+    write_xyz("molecule.xyz", [string(length(labels), "\n")], [labels], [coords])
+    xtb.last_output = readlines(pipeline(`xtb molecule.xyz --chrg $(xtb.charge) --uhf $(xtb.multiplicity) --gfn $(xtb.model)`))
+    return parse_energy(xtb)
 end

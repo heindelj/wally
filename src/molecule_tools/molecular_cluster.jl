@@ -117,10 +117,7 @@ function molecules_by_formula(cluster::Cluster, chemical_formula::Vector{String}
             push!(indices_out, i)
         end
     end
-    if length(indices_out) > 0
-        return indices_out
-    end
-    @assert false "Did not find any molecules matching the requested chemical formula."
+    return indices_out
 end
 
 function find_n_nearest_neighbors(cluster::Cluster, chemical_formula::Vector{String}, n::Int, sortres::Bool=true)
