@@ -90,7 +90,7 @@ function number_of_hydrogen_bonds(coords::AbstractMatrix)
     return length(r_psi_hydrogen_bonds(coords))
 end
 
-function number_of_hydrogen_bonds(coords::Array{Array{Float64, 2}, 1})
+function number_of_hydrogen_bonds(coords::Vector{Matrix{Float64}})
     """
     returns the number of hydrogen bonds in a sequence of OHH-sorted water systems.
     """
@@ -101,204 +101,73 @@ function number_of_hydrogen_bonds(coords::Array{Array{Float64, 2}, 1})
     return number_of_hydrogen_bonds_in_each_frame
 end
 
-function sort_waters(coords::AbstractMatrix; to_angstrom::Bool = false)
-    """
-    Sorts waters based on distance criteria into OHH order.
-    """
-    @assert isinteger(size(coords, 2) / 3) "Number of atoms not divisible by 3. Can't be only waters."
-    distance_condition::Float64 = 1.4 # ansgtroms
-    if to_angstrom
-        distance_condition *= conversion(:angstrom, :bohr)
-    end
-
-    sorted_indices = zeros(Int, size(coords, 2))
-    current_index = 1
-
-    water_indices::Vector{Int} = [0, 0, 0]
-    pairs::Vector{Vector{Tuple{Int, Int}}} = [[(1,2), (1,3)], [(2,1), (2,3)], [(3,1), (3,2)]]
-    for i in 1:size(coords, 2)
-        if !(i in sorted_indices)
-            water_indices[1] = i
-            count::Int = 2
-                for j in 1:size(coords, 2)
-                    @inbounds if norm(@view(coords[:,i]) - @view(coords[:,j])) < distance_condition && norm(@view(coords[:,i]) - @view(coords[:,j])) > 0.0001
-                        water_indices[count] = j
-                        count += 1
-                    end
-                end
-
-            if count == 4 # otherwise we started with a hydrogen
-                for pair in pairs
-                    # this is an indexing abomination
-                    @inbounds @views OH1 = coords[:, water_indices[pair[1][1]]] - coords[:, water_indices[pair[1][2]]]
-                    @inbounds @views OH2 = coords[:, water_indices[pair[2][1]]] - coords[:, water_indices[pair[2][2]]]
-                    angle = acosd(dot(OH1, OH2) / (norm(OH1) * norm(OH2)))
-                    if angle > 75.0 && angle < 135.0
-                        sorted_indices[current_index] = water_indices[pair[1][1]]
-                        sorted_indices[current_index+1] = water_indices[pair[1][2]]
-                        sorted_indices[current_index+2] = water_indices[pair[2][2]]
-                        current_index += 3
-                    end
-                end
-            end
-            
-        end
-    end
-    @assert length(sorted_indices) == size(coords, 2) "Didn't associate every atom to a molecule. Check your units (should be in angstroms) or try providing atom labels."
-    return coords[:, sorted_indices]
-end
-
-function sort_waters(coords::AbstractMatrix, labels::AbstractVector; to_angstrom::Bool = false)
-    """
-    Sorts waters based on distance criteria into OHH order.
-    Takes the associated labels for simplicity of determining which atoms are oxygens.
-    """
-    @assert isinteger(length(labels) / 3) "Number of atoms not divisible by 3. Can't be only waters."
-    
-    distance_condition::Float64 = 1.35 # ansgtroms
-    if to_angstrom
-        distance_condition *= conversion(:angstrom, :bohr)
-    end
-
-    sorted_indices = zeros(Int, length(labels))
-    oxygen_indices::Array{Int} = zeros(Int, length(labels) ÷ 3)
-    hydrogen_indices::Array{Int} = zeros(Int, 2 * (length(labels) ÷ 3))
-    # get the oxygen and hydrogen indices
-    O_counter::Int = 0
-    H_counter::Int = 0
-    for (i, label) in enumerate(labels)
-        if label == "O" || label == "o"
-            O_counter += 1
-            oxygen_indices[O_counter] = i
-            sorted_indices[3*O_counter-2] = i
-        elseif label == "H" || label == "h"
-            H_counter += 1
-            hydrogen_indices[H_counter] = i
-        end
-    end
-    for (i_Oxygen, O_vec) in enumerate(eachcol(view(coords, :, oxygen_indices)))
-        num_H_found::Int = 1
-        for (i_Hydrogen, H_vec) in enumerate(eachcol(view(coords, :, hydrogen_indices)))
-            if (norm(O_vec - H_vec) < distance_condition)
-                sorted_indices[3*(i_Oxygen - 1) + num_H_found + 1] = hydrogen_indices[i_Hydrogen]
-                num_H_found += 1
-            end
-        end
-    end
-
-    return coords[:, sorted_indices]
-end
-
 function sort_water_cluster(coords::AbstractMatrix, labels::AbstractVector, to_angstrom::Bool = false; return_permutation::Bool = false)
-    nl = build_cluster(coords, labels)
-
-    sorted_indices = Int[]
-    for i in 1:length(nl.indices)
-        append!(sorted_indices, nl.indices[i])
-    end
-
-    hydronium_indices = molecules_by_formula(nl, ["O", "H", "H", "H"])
-    hydroxide_indices = molecules_by_formula(nl, ["O", "H"])
-    water_indices = setdiff(sorted_indices, hydronium_indices, hydroxide_indices)
-
-    # now we sort the indices into OHH order so that O always comes
-    # before its H atoms.
-    for i in 1:2:length(hydroxide_indices)
-        idx1 = hydroxide_indices[i]
-        idx2 = hydroxide_indices[i+1]
-        if labels[idx1] == "H"
-            hydroxide_indices[i] = idx2
-            hydroxide_indices[i+1] = idx1
+    """
+    Sorts water clusters containing water, hydroxide, or hydronium
+	and puts H3O+ and OH- first. Then OHH sorted water. Then any other
+    solutes in the system.
+	"""
+    O_neighbors = Dict{Int, Vector{Int}}()
+    for i in eachindex(labels)
+        if labels[i] == "O"
+            O_neighbors[i] = []
         end
     end
 
-    # TODO: Add code to sub-sort the H3O+ and H2O parts like above.
+	if to_angstrom
+		coords *= conversion(:angstrom, :bohr)
+    end
 
-    final_indices = Int[]
-    append!(final_indices, hydroxide_indices)
-    append!(final_indices, hydronium_indices)
-    append!(final_indices, water_indices)
+    # build neighbor list of atoms.
+    nl = KDTree(coords)
+    # assume ten nearest atoms contains the nearest oxygen
+    indices, _ = knn(nl, coords, 10, true)
 
+    # associate each hydrogen to the closest oxygen
+    for nbr_indices in indices
+        if labels[nbr_indices[1]] == "H"
+            for i in nbr_indices
+                if labels[i] == "O"
+                    push!(O_neighbors[i], nbr_indices[1])
+                    break
+                end
+            end
+        end
+    end
 
-    @assert length(final_indices) == length(labels) "Didn't correctly assign an atom to each molecule so we lost atoms when building the cluster or when filtering out the hydronium and hydroxide indices!"
+    OH_indices = Int[]
+    hydronium_indices = Int[]
+    water_indices = Int[]
+    all_indices = Int[]
+    for i in keys(O_neighbors)
+        if length(O_neighbors[i]) == 1
+            push!(OH_indices, i)
+            append!(OH_indices, O_neighbors[i])
+        elseif length(O_neighbors[i]) == 2
+            push!(water_indices, i)
+            append!(water_indices, O_neighbors[i])
+        elseif length(O_neighbors[i]) == 3
+            push!(hydronium_indices, i)
+            append!(hydronium_indices, O_neighbors[i])
+        else
+            println(i)
+            display(O_neighbors[i])
+            @assert false "Found a water with four hydrogen atoms or no hydrogen atoms. Exiting."
+        end
+    end
 
+    append!(all_indices, OH_indices)
+    append!(all_indices, hydronium_indices)
+    append!(all_indices, water_indices)
+	
+    unused_indices = setdiff([1:length(labels)...], all_indices)
+    append!(all_indices, unused_indices)
+    @assert length(all_indices) == length(labels) "Didn't use an index or used an index twice. Bug somewhere."
 	if return_permutation
-		return final_indices
+		return all_indices
 	end
-	return labels[final_indices], coords[:, final_indices]
+	return labels[all_indices], coords[:, all_indices]
 end
-
-# function sort_water_cluster(coords::AbstractMatrix, labels::AbstractVector, to_angstrom::Bool = false; return_permutation::Bool = false)
-#     """
-#     Sorts water clusters containing water, hydroxide, or hydronium
-# 	and puts H3O+ and OH- first. Then OHH sorted water.
-# 	"""
-#     O_indices = Int[]
-# 	H_indices = Int[]
-#     all_indices = Int[]
-#
-# 	sorted_hydroxide_indices = Int[]
-# 	sorted_water_indices = Int[]
-# 	sorted_hydronium_indices = Int[]
-#
-#     used_indices = Int[]
-#
-# 	distance_condition = 1.4
-# 	if to_angstrom
-# 		distance_condition *= conversion(:angstrom, :bohr)
-#     end
-#
-# 	# get indices of each atom type
-# 	for i in 1:length(labels)
-# 		if labels[i] == "O" || labels[i] == "o"
-# 		    push!(O_indices, i)
-# 		elseif labels[i] == "H" || labels[i] == "h"
-# 		    push!(H_indices, i)
-# 	    else
-#             push!(all_indices, i)
-# 	    end
-# 	end
-#
-# 	indices_temp = Int[]
-#     for O_index in O_indices
-#         @views O_vec = coords[:, O_index]
-# 		push!(indices_temp, O_index)
-#         push!(used_indices, O_index)
-# 		for H_index in H_indices
-# 		    @views H_vec = coords[:, H_index]
-# 			if norm(O_vec - H_vec) < distance_condition
-#                 push!(indices_temp, H_index)
-#                 push!(used_indices, H_index)
-# 		    end
-#         end
-#
-# 		if length(indices_temp) == 2
-# 		    append!(sorted_hydroxide_indices, indices_temp)
-# 	    elseif length(indices_temp) == 3
-# 		    append!(sorted_water_indices, indices_temp)
-# 		elseif length(indices_temp) == 4
-# 		    append!(sorted_hydronium_indices, indices_temp)
-# 	    else
-# 		    @assert false "Found more than four hydrogen neighbors to an oxygen. Quitting. Fix your code."
-# 		    # need to handle the case that there are too many
-# 			# neighbors which shouldn't happen but probably could
-# 	    end
-# 		empty!(indices_temp)
-#     end
-#
-# 	append!(sorted_hydroxide_indices, sorted_hydronium_indices)
-# 	append!(sorted_hydroxide_indices, sorted_water_indices)
-#     append!(all_indices, sorted_hydroxide_indices)
-#
-#     unused_indices = setdiff(used_indices, all_indices)
-#
-#     @assert length(unused_indices) == 0 "Leftover indices! Need to assign these somehow."
-#
-# 	if return_permutation
-# 		return all_indices
-# 	end
-# 	return labels[all_indices], coords[:, all_indices]
-# end
 
 function get_n_neighboring_waters(coords::AbstractMatrix, labels::AbstractVector, special_index::Int, num_neighbors::Int)
     @assert labels[special_index] == "O" "Currently only support using an oxygen as the special index."
