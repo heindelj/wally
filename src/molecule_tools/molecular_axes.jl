@@ -16,6 +16,21 @@ function center_of_mass_distance(sub_structure::AbstractMatrix, sub_structure_ma
     return norm(center_of_mass(sub_structure, sub_structure_masses) - center_of_mass(full_structure, full_structure_masses))
 end
 
+function rotate_coords_around_axis_by_angle(coords::AbstractMatrix, axis::AbstractVector, Δθ::Float64, center_axis::Union{AbstractVector{Float64},Nothing}=nothing)
+    """
+    Takes an axis and angle and returns coordinates rotated by Δθ around the axis.
+    """
+    R = Rotations.AngleAxis(Δθ, axis[1], axis[2], axis[3])
+    if center_axis === nothing
+        center_axis = centroid(coords)
+    end
+    #display(coords)
+    coords .-= center_axis
+    #display(coords)
+    coords = reshape(reinterpret(Float64, [R * col for col in eachcol(coords)]), 3, :) .+ center_axis
+    return coords
+end
+
 function align_vector_to_axis(src_axis::AbstractVector, target_axis::AbstractVector)
 	"""
 	Takes a source axis, some 3-D vector, and returns the rotation matrix
@@ -26,7 +41,7 @@ function align_vector_to_axis(src_axis::AbstractVector, target_axis::AbstractVec
 	return Rotations.AngleAxis(rotation_angle, rotation_vector[1], rotation_vector[2], rotation_vector[3])
 end
 
-function apply_rotation_to_coords(coords::AbstractMatrix, src_axis::AbstractVector, target_axis::AbstractVector)
+function apply_coords_to_axis(coords::AbstractMatrix, src_axis::AbstractVector, target_axis::AbstractVector)
 	"""
 	Applies the rotation matrix generated from src_axis and target_axis
 	using align_vector_to_axis.
