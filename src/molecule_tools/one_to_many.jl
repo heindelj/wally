@@ -27,7 +27,7 @@ function one_to_many(jobs::Vector{Function})
     active_jobs = Vector{Union{Future, Nothing}}(nothing, length(worker_array))
     current_job_index = 1
     for i in eachindex(worker_array)
-        if i < length(jobs)
+        if i <= length(jobs)
             @async begin
                 active_jobs[i] = @spawnat worker_array[i] jobs[current_job_index]
                 current_job_index += 1
@@ -41,7 +41,7 @@ function one_to_many(jobs::Vector{Function})
         for i in eachindex(worker_array)
             # check if currently running jobs is complete
             # if it is submit the next job immediately
-            if jobs[i] !== nothing
+            if active_jobs[i] !== nothing
                 if isready(active_jobs[i])
                     completed_jobs += 1
                     if current_job_index < num_jobs
