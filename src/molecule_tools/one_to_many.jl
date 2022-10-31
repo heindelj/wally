@@ -24,7 +24,7 @@ function one_to_many(jobs::Vector{Function})
     is done, the output needs to be logged by the worker.
     """
     worker_array = workers()
-    active_jobs::Vector{Union{Future, Nothing}}(nothing, length(worker_array))
+    active_jobs = Vector{Union{Future, Nothing}}(nothing, length(worker_array))
     current_job_index = 1
     for i in eachindex(worker_array)
         if i < length(jobs)
