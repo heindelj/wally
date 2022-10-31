@@ -1,21 +1,16 @@
 using Distributed, ClusterManagers
 
-struct Job
-    job::Function
-    is_finished::Bool
-end
-
-Job(f::Function) = Job(f, false)
-
-function setup_environment(num_workers::Int, include_files::Vector{String}, cluster_type::Symbol=:none)
+function setup_environment(num_workers::Int, include_files::Union{Vector{String}, Nothing}=nothing, cluster_type::Symbol=:none)
     if cluster_type === :none
         addprocs(num_workers)
     elseif cluster_type == :slurm
         addprocs_slurm(num_workers)
     end
 
-    for include_files in include_files
-        @everywhere include(include_file)
+    if include_files !== nothing
+        for include_files in include_files
+            @everywhere include(include_file)
+        end
     end
 end
 

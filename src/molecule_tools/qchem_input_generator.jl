@@ -152,6 +152,18 @@ function make_qchem_job(infile_name::String, coords::Matrix{Float64}, labels::Ve
     return () -> run_qchem_job(write_input_file(infile_name, coords, labels, rem_input, charge, multiplicity))
 end
 
+function make_qchem_job(infile_name::String)
+    """
+    Constructs a Q-Chem job from an already assembled input file and returns as functor.
+    This code path assumes the output file name where we remove the
+    .in suffix will be a valid output name. That is, spawning multiple
+    jobs from the same input file will result in the output files
+    being overwritten. In that case, copy the input file to a different
+    name and run separate jobs with the identical inputs.
+    """
+    return () -> run_qchem_job(infile_name)
+end
+
 function run_qchem_job(file_path::String, nt::Int=32)
     out_name = string(splitext(file_path)[1], ".out")
     run(pipeline(`'qchem' '-save' '-nt' $(nt) $(file_path) $(out_name) '&'`))
