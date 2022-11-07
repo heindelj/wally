@@ -216,16 +216,16 @@ endfixed
 "
 end
 
-function wb97mv_avtz_with_nbo_rem()
+function wb97xv_tzvppd_with_nbo_rem()
     return "\$rem
   mem_total  16000
   ideriv                  1
   incdft                  0
   incfock                 0
   jobtype                 sp
-  method                  wB97M-V
+  method                  wB97X-V
   unrestricted            false
-  basis                   aug-cc-pVTZ
+  basis                   def2-tzvppd
   scf_algorithm           gdm
   scf_max_cycles          500
   scf_guess               sad
@@ -238,6 +238,7 @@ function wb97mv_avtz_with_nbo_rem()
   gen_scfman_final        true
   internal_stability      false
   complex                 false
+  chelpg true
 \$end
 
 \$nbo

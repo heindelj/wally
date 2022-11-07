@@ -93,3 +93,106 @@ function parse_EDA_terms(output_file::String)
         :ct        => ct
     )
 end
+
+"""
+Parses chelpg charges from output file if they are there.
+Returns as vector of vectors.
+"""
+function parse_chelpg_charges(output_file::String)
+    charges = Vector{Float64}[]
+
+    lines = readlines(output_file)
+    for (i, line) in enumerate(lines)
+        if occursin("Ground-State ChElPG Net Atomic Charges", line)
+            new_charges = Float64[]
+            line_index = i + 4
+            while !occursin("------------", lines[line_index])
+                push!(new_charges, tryparse(Float64, split(lines[line_index])[3]))
+                line_index += 1
+            end
+            push!(charges, new_charges)
+        end
+    end
+    return charges
+end
+
+"""
+Parses the geometries used by Q-Chem in a calculation.
+Generically, these may be different than what was input by
+the user since Q-Chem will translate and rotate the molecule
+to a standard orientation and center the molecule at its center of mass.
+"""
+function parse_geometries(output_file::String)
+    labels = Vector{String}[]
+    geometries = Matrix{Float64}[]
+
+    lines = readlines(output_file)
+    for (i, line) in enumerate(lines)
+        if occursin("Standard Nuclear Orientation (Angstroms)", line)
+            line_index = i + 3
+            natoms = 0
+            while !occursin("------------", lines[line_index])
+                natoms += 1
+                line_index += 1
+            end
+            line_index = i + 3
+            new_labels = ["" for _ in 1:natoms]
+            new_geom = zeros(3, natoms)
+            for i_geom in 1:natoms
+                split_line = split(lines[line_index])
+                new_labels[i_geom] = split_line[2]
+                @views new_geom[:, i_geom] = tryparse.((Float64,), split_line[3:5])
+                line_index += 1
+            end
+            push!(labels, new_labels)
+            push!(geometries, new_geom)
+        end
+    end
+    return labels, geometries
+end
+
+"""
+Parses xyz trajectory from Q-Chem aimd run.
+Only writes gometry if the step is successfully completed.
+"""
+function get_xyz_trajectory_from_aimd_run(output_file::String)
+    labels = Vector{String}[]
+    geometries = Matrix{Float64}[]
+    energies = Float64[]
+
+    lines = readlines(output_file)
+    added_geom = false
+    for (i, line) in enumerate(lines)
+        if occursin("Instantaneous Temperature", line)
+            added_geom = true
+            line_index = i + 5
+            natoms = 0
+            while !occursin("------------", lines[line_index])
+                natoms += 1
+                line_index += 1
+            end
+            line_index = i + 5
+            new_labels = ["" for _ in 1:natoms]
+            new_geom = zeros(3, natoms)
+            for i_geom in 1:natoms
+                split_line = split(lines[line_index])
+                new_labels[i_geom] = split_line[2]
+                @views new_geom[:, i_geom] = tryparse.((Float64,), split_line[3:5])
+                line_index += 1
+            end
+            push!(labels, new_labels)
+            push!(geometries, new_geom)
+        end
+        if occursin("Total energy in the final basis set", line) && added_geom
+            push!(energies, tryparse(Float64, split(line)[9]))
+            added_geom = false
+        end
+    end
+    if added_geom
+        # only get here if we added a geometry but never found a corresponding energy
+        pop!(labels)
+        pop!(geometries)
+    end
+    @assert length(energies) == length(geometries) "Geometries and energies don't pair up!"
+    return energies, labels, geometries
+end
