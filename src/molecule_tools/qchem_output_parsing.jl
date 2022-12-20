@@ -1,4 +1,5 @@
-using LinearAlgebra
+using LinearAlgebra, CSV, DataFrames
+include("read_xyz.jl")
 
 """
 Parses the wiberg bond order matrix from a Q-Chem output file.
@@ -9,8 +10,8 @@ function parse_wiberg_BO_matrix(output_file::String)
     BO_matrices = Matrix{Float64}[]
     for (i, line) in enumerate(file_contents)
         if occursin("Wiberg bond index matrix in the NAO basis:", line)
-            line_idx = i+4 # takes you to first line of matrix
-            
+            line_idx = i + 4 # takes you to first line of matrix
+
             # find the number of atoms
             BO_line = file_contents[line_idx]
             natoms = 0
@@ -23,9 +24,9 @@ function parse_wiberg_BO_matrix(output_file::String)
             # number of blocks over which BO matrix is printed
             num_BO_blocks = natoms ÷ 9 + 1
             BO_matrix = zeros(natoms, natoms)
-            
+
             # reset to first line of data
-            line_idx = i+4
+            line_idx = i + 4
             for i_block in 1:num_BO_blocks
                 for i_atom in 1:natoms
                     BO_line = file_contents[line_idx]
@@ -33,7 +34,7 @@ function parse_wiberg_BO_matrix(output_file::String)
                     BOs = tryparse.((Float64,), split_line)
                     for j in eachindex(BOs)
                         # 9 is the number of atoms printed per block
-                        BO_matrix[i_atom, (i_block-1) * 9 + j] = BOs[j]
+                        BO_matrix[i_atom, (i_block-1)*9+j] = BOs[j]
                     end
                     line_idx += 1
                 end
@@ -51,13 +52,13 @@ Parses EDA terms from an EDA calculation.
 Returns a dictionary of arrays of each term.
 """
 function parse_EDA_terms(output_file::String)
-    cls_elec  = Float64[]
-    elec      = Float64[]
+    cls_elec = Float64[]
+    elec = Float64[]
     mod_pauli = Float64[]
-    pauli     = Float64[]
-    disp      = Float64[]
-    pol       = Float64[]
-    ct        = Float64[]
+    pauli = Float64[]
+    disp = Float64[]
+    pol = Float64[]
+    ct = Float64[]
 
     lines = readlines(output_file)
     for line in lines
@@ -67,7 +68,7 @@ function parse_EDA_terms(output_file::String)
         if occursin("(PAULI)", line)
             push!(pauli, tryparse(Float64, split(line)[5]))
         end
-        if occursin("   (DISP)   ", line)
+        if occursin("E_disp   (DISP)", line)
             push!(disp, tryparse(Float64, split(line)[5]))
         end
         if occursin("(CLS ELEC)", line)
@@ -84,14 +85,46 @@ function parse_EDA_terms(output_file::String)
         end
     end
     return Dict(
-        :cls_elec  => cls_elec,
-        :elec      => elec,
+        :cls_elec => cls_elec,
+        :elec => elec,
         :mod_pauli => mod_pauli,
-        :pauli     => pauli,
-        :disp      => disp,
-        :pol       => pol,
-        :ct        => ct
+        :pauli => pauli,
+        :disp => disp,
+        :pol => pol,
+        :ct => ct
     )
+end
+
+"""
+Parses EDA terms from an EDA calculation.
+Appends output to existing dictionary.
+"""
+function parse_EDA_terms!(eda_dict::Dict{Symbol, Vector{Float64}}, output_file::String)
+    lines = readlines(output_file)
+    for line in lines
+        if occursin("(ELEC)", line)
+            push!(eda_dict[:elec], tryparse(Float64, split(line)[5]))
+        end
+        if occursin("(PAULI)", line)
+            push!(eda_dict[:pauli], tryparse(Float64, split(line)[5]))
+        end
+        if occursin("E_disp   (DISP)", line)
+            push!(eda_dict[:disp], tryparse(Float64, split(line)[5]))
+        end
+        if occursin("(CLS ELEC)", line)
+            push!(eda_dict[:cls_elec], tryparse(Float64, split(line)[6]))
+        end
+        if occursin("(MOD PAULI)", line)
+            push!(eda_dict[:mod_pauli], tryparse(Float64, split(line)[6]))
+        end
+        if occursin("POLARIZATION", line)
+            push!(eda_dict[:pol], tryparse(Float64, split(line)[2]))
+        end
+        if occursin("CHARGE TRANSFER", line)
+            push!(eda_dict[:ct], tryparse(Float64, split(line)[3]))
+        end
+    end
+    return
 end
 
 """
@@ -195,4 +228,102 @@ function get_xyz_trajectory_from_aimd_run(output_file::String)
     end
     @assert length(energies) == length(geometries) "Geometries and energies don't pair up!"
     return energies, labels, geometries
+end
+
+"""
+Takes all EDA outputs from a file and writes them in CSV format.
+Additionally, we attach the file containing charges calculated with ChElPG
+from which the charges and geometries can be parsed. We also store the index
+of the geometry to which the EDA data corresponds.
+"""
+function write_eda_and_charge_data_to_csv(csv_out_file::String, eda_file::String, charge_and_geom_file::String)
+    eda_data = parse_EDA_terms(eda_file)
+    display(length(eda_data))
+    df = DataFrame(eda_data)
+    geom_index = [1:nrow(df)...]
+    println(length([charge_and_geom_file for _ in eachrow(df)]))
+    df[!, :index] = geom_index
+    df[!, :charge_file] = [charge_and_geom_file for _ in eachrow(df)]
+    CSV.write(csv_out_file, df)
+end
+
+function parse_xyz_from_EDA_input(infile::String)
+    lines = readlines(infile)
+    labels = String[]
+    coords = Vector{Float64}[]
+    in_molecule_block = false
+    for line in lines
+        if in_molecule_block
+            split_line = split(line)
+            if length(split_line) == 4
+                if all(isletter, split_line[1])
+                    xyz = tryparse.((Float64,), split_line[2:4])
+                    push!(coords, xyz)
+                    push!(labels, split_line[1])
+                end
+            end
+        end
+        if occursin("\$molecule", line)
+            in_molecule_block = true
+        end
+        if occursin("\$end", line)
+            return labels, reduce(hcat, coords)
+        end
+    end
+    return nothing
+end
+
+"""
+Reads all file names from within a path and finds the pairs of .in and .out files
+which are expected to have EDA data. Parses the xyz file from the .in file and
+writes th EDA data to a CSV file which contains EDA data for the entire scan.
+"""
+function write_xyz_and_csv_from_EDA_scans(folder_path::String, csv_outfile::String, xyz_outfile::String)
+    all_files = readdir(folder_path)
+    in_files = String[]
+    for i in eachindex(all_files)
+        if contains(all_files[i], ".in")
+            push!(in_files, all_files[i])
+        end
+    end
+    out_files = String[]
+    for i in eachindex(in_files)
+        out_file = replace(in_files[i], ".in" => ".out")
+        if out_file in all_files
+            push!(out_files, out_file)
+        else
+            @warn string("Couldn't find an out file corresponding to the input file: ", in_files[i])
+            continue
+        end
+    end
+
+    # get xyz coordinates from input files
+    all_labels = Vector{String}[]
+    all_geoms = Matrix{Float64}[]
+    for i in eachindex(in_files)
+        labels, geom = parse_xyz_from_EDA_input(in_files[i])
+        push!(all_labels, labels)
+        push!(all_geoms, geom)
+    end
+
+    # get EDA data from output files
+    eda_data = Dict(
+        :cls_elec => Float64[],
+        :elec => Float64[],
+        :mod_pauli => Float64[],
+        :pauli => Float64[],
+        :disp => Float64[],
+        :pol => Float64[],
+        :ct => Float64[]
+    )
+
+    for i in eachindex(out_files)
+        parse_EDA_terms!(eda_data, out_files[i])
+    end
+    df = DataFrame(eda_data)
+    geom_index = [1:nrow(df)...]
+    df[!, :index] = geom_index
+    write_xyz(xyz_outfile, [string(length(all_labels[i]), "\n") for i in eachindex(all_labels)], all_labels, all_geoms)
+    df[!, :xyz_file] = [xyz_outfile for _ in eachrow(df)]
+    CSV.write(csv_outfile, df)
 end

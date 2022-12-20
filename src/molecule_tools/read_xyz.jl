@@ -144,3 +144,7 @@ function write_xyz(outfile::AbstractString, header::AbstractArray, labels::Abstr
         end
     end
 end
+
+function write_xyz(outfile::AbstractString, header::AbstractString, labels::AbstractVector{String}, geoms::AbstractVector{Matrix{Float64}}; append::Bool=false, directory::AbstractString="")
+    write_xyz(outfile, [header for _ in eachindex(geoms)], [labels for _ in eachindex(geoms)], geoms, append=append, directory=directory)
+end

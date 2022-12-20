@@ -107,13 +107,15 @@ function write_multi_input_file_fragments(
             write(io, string(charge, " ", multiplicity, "\n"))
             write(io, "--\n")
             for i_frag in eachindex(fragment_indices)
-                if fragment_indices[i_frag][1] < size(geoms[i], 2)
+                if fragment_indices[i_frag][1] <= size(geoms[i], 2)
                     write(io, string(fragment_charges[i_frag], " ", fragment_multiplicities[i_frag], "\n"))
                     geom_string = geometry_to_string(geoms[i][:, fragment_indices[i_frag]], labels[i][fragment_indices[i_frag]])
                     write(io, geom_string)
                     if i_frag != length(fragment_indices)
                         write(io, "--\n")
                     end
+                else
+                    @assert false "Provided fragment index which is larger than the number of indices in the geometry"
                 end
             end
             write(io, "\$end\n\n")
