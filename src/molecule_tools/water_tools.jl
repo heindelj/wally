@@ -121,7 +121,8 @@ function sort_water_cluster(coords::AbstractMatrix, labels::AbstractVector, to_a
     # build neighbor list of atoms.
     nl = KDTree(coords)
     # assume ten nearest atoms contains the nearest oxygen
-    indices, _ = knn(nl, coords, 10, true)
+    k = 10 > length(labels) ? length(labels) : 10
+    indices, _ = knn(nl, coords, k, true)
 
     # associate each hydrogen to the closest oxygen
     for nbr_indices in indices

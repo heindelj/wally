@@ -256,10 +256,12 @@ function parse_xyz_from_EDA_input(infile::String)
         if in_molecule_block
             split_line = split(line)
             if length(split_line) == 4
-                if all(isletter, split_line[1])
+                if all(isletter, strip(split_line[1], ('+', '-')))
                     xyz = tryparse.((Float64,), split_line[2:4])
-                    push!(coords, xyz)
-                    push!(labels, split_line[1])
+                    if !any(isnothing, xyz)
+                        push!(coords, xyz)
+                        push!(labels, strip(split_line[1], ('+', '-')))
+                    end
                 end
             end
         end
@@ -320,10 +322,22 @@ function write_xyz_and_csv_from_EDA_scans(folder_path::String, csv_outfile::Stri
     for i in eachindex(out_files)
         parse_EDA_terms!(eda_data, out_files[i])
     end
+    column_lengths = [length(eda_data[key]) for key in keys(eda_data)]
+    if !allequal(column_lengths)
+        for i in eachindex(column_lengths)
+            if column_lengths[i] == 0
+                key = [keys(eda_data)...][i]
+                [push!(eda_data[key], 0.0) for _ in 1:maximum(column_lengths)]
+            end
+        end
+    end
+    column_lengths = [length(eda_data[key]) for key in keys(eda_data)]
+    @assert allequal(column_lengths) "All columns of EDA data don't have equal length. Parsing failed."
     df = DataFrame(eda_data)
     geom_index = [1:nrow(df)...]
     df[!, :index] = geom_index
     write_xyz(xyz_outfile, [string(length(all_labels[i]), "\n") for i in eachindex(all_labels)], all_labels, all_geoms)
     df[!, :xyz_file] = [xyz_outfile for _ in eachrow(df)]
     CSV.write(csv_outfile, df)
+    return
 end

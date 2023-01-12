@@ -2,11 +2,13 @@ using LinearAlgebra, Rotations
 include("molecular_graph.jl")
 include("molecular_axes.jl")
 
-function distance_scan(coords::Matrix{Float64}, indices::Tuple{Int, Int}, Δr_left::Float64=-0.3, Δr_right::Float64=0.5, nsteps::Int=9; aux_indices::Union{Tuple{Vector{Int}, Vector{Int}}, Nothing}=nothing)
+function distance_scan(coords::Matrix{Float64}, indices::Tuple{Int, Int}, Δr_left::Float64=-0.3, Δr_right::Float64=0.5, nsteps::Int=9; aux_indices::Union{Tuple{Vector{Int}, Vector{Int}}, Nothing}=nothing, only_move_atom_1::Bool=false)
     """
     Scans along a bond determined by two indices into the coords
     array passed in. The scan moves the coordinate corresponding
-    to each index symmetrically. If aux_indices is not nothing, then all
+    to each index symmetrically unless only_move_atom_1 is true.
+    In that case, the atom corresponding to index 1 is the only
+    one which is scanned. If aux_indices is not nothing, then all
     indices in the first vector are moved with index 1 and all
     indices in the second vector are moved with index two.
 
@@ -19,8 +21,12 @@ function distance_scan(coords::Matrix{Float64}, indices::Tuple{Int, Int}, Δr_le
     displacements = LinRange(Δr_left, Δr_right, nsteps)
     t = [(norm(r_ij) + 0.5 * Δx) / norm(r_ij) for Δx in displacements]
     for i in 1:length(displacements)
-        @views coords_out[i][:, indices[2]] = coords_out[i][:, indices[1]] - t[i] * r_ij
-        @views coords_out[i][:, indices[1]] = coords_out[i][:, indices[1]] + (t[i] - 1.0) * r_ij
+        if !only_move_atom_1
+            @views coords_out[i][:, indices[2]] = coords_out[i][:, indices[1]] - t[i] * r_ij
+            @views coords_out[i][:, indices[1]] = coords_out[i][:, indices[1]] + (t[i] - 1.0) * r_ij
+        else
+            @views coords_out[i][:, indices[1]] = coords_out[i][:, indices[1]] + 2.0 * (t[i] - 1.0) * r_ij
+        end
         if aux_indices !== nothing
             for i_aux_1 in aux_indices[1]
                 @views coords_out[i][:, i_aux_1] += (t[i] - 1.0) * r_ij
@@ -33,8 +39,8 @@ function distance_scan(coords::Matrix{Float64}, indices::Tuple{Int, Int}, Δr_le
     return coords_out
 end
 
-function distance_scan(coords::Matrix{Float64}, scan_indices::Tuple{Tuple{Int, Int}, Tuple{Vector{Int}, Vector{Int}}}, Δr_left::Float64=-0.4, Δr_right::Float64=0.6, nsteps::Int=21)
-    return distance_scan(coords, scan_indices[1], Δr_left, Δr_right, nsteps, aux_indices=scan_indices[2])
+function distance_scan(coords::Matrix{Float64}, scan_indices::Tuple{Tuple{Int, Int}, Tuple{Vector{Int}, Vector{Int}}}, Δr_left::Float64=-0.4, Δr_right::Float64=0.6, nsteps::Int=21, only_move_atom_1::Bool=false)
+    return distance_scan(coords, scan_indices[1], Δr_left, Δr_right, nsteps, aux_indices=scan_indices[2], only_move_atom_1=only_move_atom_1)
 end
 
 function angle_scan(coords::Matrix{Float64}, indices::Tuple{Int, Int, Int}, Δθ_in::Float64=-30.0, Δθ_out::Float64=30.0, nsteps::Int=13; aux_indices::Union{Tuple{Vector{Int}, Vector{Int}}, Nothing}=nothing)

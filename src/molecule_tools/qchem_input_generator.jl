@@ -1,9 +1,9 @@
 include("nwchem_input_generator.jl")
 
+"""
+Writes a single Q-Chem input file.
+"""
 function write_input_file(infile_name::String, coords::Matrix{Float64}, labels::Vector{String}, rem_input::String, charge::Int, multiplicity::Int)
-    """
-    Writes a single Q-Chem input file.
-    """
     used_input_name = next_unique_name(infile_name)
     rem_input_string = rem_input
     geom_string = geometry_to_string(coords, labels)
@@ -17,12 +17,12 @@ function write_input_file(infile_name::String, coords::Matrix{Float64}, labels::
     return used_input_name
 end
 
+"""
+Writes a Q-Chem input file for multiple jobs to be run sequentially.
+rem_input is a file containing the rem block and any other blocks needed
+for the desired calculation.
+"""
 function write_multi_input_file(infile_name::String, geoms::AbstractVector{Matrix{Float64}}, labels::AbstractVector{Vector{String}}, rem_input::String, charge::Int, multiplicity::Int, read_rem_string_from_file::Bool=false)
-    """
-    Writes a Q-Chem input file for multiple jobs to be run sequentially.
-    rem_input is a file containing the rem block and any other blocks needed
-    for the desired calculation.
-    """ 
     used_input_name = next_unique_name(infile_name)
     rem_input_string = rem_input
     if read_rem_string_from_file
@@ -36,7 +36,7 @@ function write_multi_input_file(infile_name::String, geoms::AbstractVector{Matri
         for i_piece in 1:num_pieces
             used_input_name_split = string(splitext(used_input_name)[1], "_part_", i_piece, ".in")
             push!(names_to_write, used_input_name_split)
-            end_of_block = i_piece*3000 < length(geoms) ? i_piece*3000 : length(geoms)
+            end_of_block = i_piece * 3000 < length(geoms) ? i_piece * 3000 : length(geoms)
             geom_block_indices = ((i_piece-1)*3000+1):end_of_block
             open(used_input_name_split, "w") do io
                 for i in geom_block_indices
@@ -52,10 +52,10 @@ function write_multi_input_file(infile_name::String, geoms::AbstractVector{Matri
                 end
             end
             if (i_piece % 3) == 0 || i_piece == num_pieces
-                open(string(splitext(infile_name)[1], "_part_", names_written, ".slurm"), "w") do io
-                    slurm_string = write_lawrencium_slurm_scripts(names_to_write)
-                    write(io, slurm_string)
-                end
+                #open(string(splitext(infile_name)[1], "_part_", names_written, ".slurm"), "w") do io
+                #    slurm_string = write_lawrencium_slurm_scripts(names_to_write)
+                #    write(io, slurm_string)
+                #end
                 names_written += 1
                 empty!(names_to_write)
             end
@@ -74,13 +74,21 @@ function write_multi_input_file(infile_name::String, geoms::AbstractVector{Matri
                 end
             end
         end
-        open(string(splitext(infile_name)[1], ".slurm"), "w") do io
-            slurm_string = write_lawrencium_slurm_scripts([used_input_name])
-            write(io, slurm_string)
-        end
+        #open(string(splitext(infile_name)[1], ".slurm"), "w") do io
+        #    slurm_string = write_lawrencium_slurm_scripts([used_input_name])
+        #    write(io, slurm_string)
+        #end
     end
 end
 
+"""
+ Writes a Q-Chem input file for multiple jobs to be run sequentially.
+ rem_input is a file containing the rem block and any other blocks needed
+ for the desired calculation.
+ These jobs are specifically fragment-based calculations (usually for EDA or MBE).
+ The fragments are specified with the fragment indices array and the corresponding
+ charges and multiplicites of each fragment should be specified as well.
+ """
 function write_multi_input_file_fragments(
     infile_name::String,
     geoms::AbstractVector{Matrix{Float64}},
@@ -91,15 +99,7 @@ function write_multi_input_file_fragments(
     fragment_indices::Vector{Vector{Int}},
     fragment_charges::Vector{Int},
     fragment_multiplicities::Vector{Int}
-    )
-    """
-    Writes a Q-Chem input file for multiple jobs to be run sequentially.
-    rem_input is a file containing the rem block and any other blocks needed
-    for the desired calculation.
-    These jobs are specifically fragment-based calculations (usually for EDA or MBE).
-    The fragments are specified with the fragment indices array and the corresponding
-    charges and multiplicites of each fragment should be specified as well.
-    """ 
+)
     rem_input_string = rem_input
     open(infile_name, "w") do io
         for i in eachindex(geoms)
@@ -127,7 +127,8 @@ function write_multi_input_file_fragments(
     end
 end
 
-function write_multi_input_file_fragments(infile_name::String,
+function write_multi_input_file_fragments(
+    infile_name::String,
     geoms::AbstractVector{Matrix{Float64}},
     labels::Vector{String},
     rem_input::String,
@@ -136,7 +137,7 @@ function write_multi_input_file_fragments(infile_name::String,
     fragment_indices::Vector{Vector{Int}},
     fragment_charges::Vector{Int},
     fragment_multiplicities::Vector{Int}
-    )
+)
     write_multi_input_file_fragments(infile_name, geoms, [labels for _ in eachindex(geoms)], rem_input, charge, multiplicity, fragment_indices, fragment_charges, fragment_multiplicities)
 end
 
@@ -214,6 +215,32 @@ fixed
 4 xyz
 7 xyz
 endfixed
+\$end
+"
+end
+
+function wb97xv_qzvppd_rem()
+    return "\$rem
+  mem_total  16000
+  ideriv                  1
+  incdft                  0
+  incfock                 0
+  jobtype                 sp
+  method                  wB97X-V
+  unrestricted            false
+  basis                   def2-qzvppd
+  scf_algorithm           gdm
+  scf_max_cycles          500
+  scf_guess               sad
+  scf_convergence         8
+  thresh                  14
+  symmetry                0
+  sym_ignore              1
+  gen_scfman              true
+  gen_scfman_final        true
+  internal_stability      false
+  complex                 false
+  chelpg true
 \$end
 "
 end
