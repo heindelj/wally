@@ -172,6 +172,14 @@ function run_qchem_job(file_path::String, nt::Int=32)
     run(pipeline(`'qchem' '-save' '-nt' $(nt) $(file_path) $(out_name) '&'`))
 end
 
+function multipole_field(x::Float64=0.0, y::Float64=0.0, z::Float64=0.0)
+return "\n\$multipole_field
+  X $x
+  Y $y
+  Z $z
+\$end\n"
+end
+
 function eda_input()
     return "\$rem
   JOBTYPE EDA
@@ -189,6 +197,55 @@ function eda_input()
   THRESH 14
   SCF_CONVERGENCE 8
   SCF_PRINT_FRGM TRUE
+\$end\n"
+end
+
+function bonded_eda_input()
+    return "
+\$rem
+  jobtype sp
+  gen_scfman true
+  skip_gesman true
+  EDA2 10                !! Go through the EDA2 code
+  BONDED_EDA 2           !! Do the spin-projected bonded EDA
+  EDA_POP_ANAL 0         !! No need to do population analysis on the fragments
+  N_EDA_SPIN_FLIP 1      !! This is a 1-spin flip job
+  EDA_CONTRACTION_ANAL 1 !! Breakdown POL term into rehybridization, contraction, pol
+  exchange = wB97M-V          !! This can be DFT functionals
+  basis def2-qzvppd
+  THRESH 14
+  mem_total 64000
+  mem_static 2000
+  max_scf_cycles 400
+  SCF_CONVERGENCE 6
+  mem_total 4000
+  mem_static 1000
+  ROSCF True
+  scf_guess fragmo
+  symmetry false
+  sym_ignore true
+  scf_algorithm gdm_ls
+  scfmi_mode 1
+  scf_print_frgm true
+  frgm_method stoll
+  frgm_lpcorr exact_scf
+  basis_lin_dep_thresh 6
+  scfmi_occs 0
+  scfmi_virts 0
+  child_mp true
+  child_mp_orders 1233
+  FRZ_ORTHO_DECOMP FALSE
+  EDA_CLS_ELEC FALSE
+  FRZ_RELAX true
+  FRZ_RELAX_METHOD 2
+  eda_pol_a False
+\$end
+
+\$rem_frgm
+  scf_convergence 7
+  scf_algorithm gdm_ls
+  skip_gesman False
+  SCF_GUESS sad
 \$end\n"
 end
 

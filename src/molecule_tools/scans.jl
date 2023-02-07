@@ -43,7 +43,7 @@ function distance_scan(coords::Matrix{Float64}, scan_indices::Tuple{Tuple{Int, I
     return distance_scan(coords, scan_indices[1], Δr_left, Δr_right, nsteps, aux_indices=scan_indices[2], only_move_atom_1=only_move_atom_1)
 end
 
-function angle_scan(coords::Matrix{Float64}, indices::Tuple{Int, Int, Int}, Δθ_in::Float64=-30.0, Δθ_out::Float64=30.0, nsteps::Int=13; aux_indices::Union{Tuple{Vector{Int}, Vector{Int}}, Nothing}=nothing)
+function angle_scan(coords::Matrix{Float64}, indices::Tuple{Int, Int, Int}, Δθ_in::Float64=-30.0, Δθ_out::Float64=30.0, nsteps::Int=13, only_move_vector_2::Bool=false; aux_indices::Union{Tuple{Vector{Int}, Vector{Int}}, Nothing}=nothing)
     """
     Scans along an angle specified by three indices. Angle to scan in and out
     should be given in degrees. In means smaller angle, out means larger angle.
@@ -57,6 +57,11 @@ function angle_scan(coords::Matrix{Float64}, indices::Tuple{Int, Int, Int}, Δθ
     for (i, θ) in enumerate(ΔΘ)
         R_left = AngleAxis(θ / 2 * π / 180.0, n[1], n[2], n[3])
         R_right = AngleAxis(θ / 2 * π / 180.0, -n[1], -n[2], -n[3])
+        if only_move_vector_2
+            R_left = diagm(ones(3))
+            R_right = AngleAxis(θ * π / 180.0, -n[1], -n[2], -n[3])
+        end
+        
         r_ij_new = convert(Vector{Float64}, R_left * normalize(r_ij)) * norm(r_ij)
         r_kj_new = convert(Vector{Float64}, R_right * normalize(r_kj)) * norm(r_kj)
         @views coords_out[i][:, indices[1]] = coords[:, indices[2]] + r_ij_new
@@ -77,8 +82,8 @@ function angle_scan(coords::Matrix{Float64}, indices::Tuple{Int, Int, Int}, Δθ
     return coords_out
 end
 
-function angle_scan(coords::Matrix{Float64}, scan_indices::Tuple{Tuple{Int, Int, Int}, Tuple{Vector{Int}, Vector{Int}}}, Δθ_in::Float64=-30.0, Δθ_out::Float64=30.0, nsteps::Int=13)
-    return angle_scan(coords, scan_indices[1], Δθ_in, Δθ_out, nsteps, aux_indices=scan_indices[2])
+function angle_scan(coords::Matrix{Float64}, scan_indices::Tuple{Tuple{Int, Int, Int}, Tuple{Vector{Int}, Vector{Int}}}, Δθ_in::Float64=-30.0, Δθ_out::Float64=30.0, nsteps::Int=13, only_move_vector_2::Bool=false)
+    return angle_scan(coords, scan_indices[1], Δθ_in, Δθ_out, nsteps, only_move_vector_2, aux_indices=scan_indices[2])
 end
 
 function dihedral_scan(coords::Matrix{Float64}, indices::NTuple{4, Int}, Δθ::Float64=180.0, nsteps::Int=19; aux_indices::Union{Tuple{Vector{Int}, Vector{Int}}, Nothing}=nothing)

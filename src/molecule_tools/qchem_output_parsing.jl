@@ -185,6 +185,49 @@ function parse_geometries(output_file::String)
 end
 
 """
+Parses the geometries used by Q-Chem in a calculation.
+Generically, these may be different than what was input by
+the user since Q-Chem will translate and rotate the molecule
+to a standard orientation and center the molecule at its center of mass.
+Also finds the corresponding calculated energy. Assumes DFT.
+"""
+function parse_geometries_and_energies(output_file::String)
+    labels = Vector{String}[]
+    geometries = Matrix{Float64}[]
+    energies = Float64[]
+
+    lines = readlines(output_file)
+    for (i, line) in enumerate(lines)
+        if occursin("Standard Nuclear Orientation (Angstroms)", line)
+            line_index = i + 3
+            natoms = 0
+            while !occursin("------------", lines[line_index])
+                natoms += 1
+                line_index += 1
+            end
+            line_index = i + 3
+            new_labels = ["" for _ in 1:natoms]
+            new_geom = zeros(3, natoms)
+            for i_geom in 1:natoms
+                split_line = split(lines[line_index])
+                new_labels[i_geom] = split_line[2]
+                @views new_geom[:, i_geom] = tryparse.((Float64,), split_line[3:5])
+                line_index += 1
+            end
+            push!(labels, new_labels)
+            push!(geometries, new_geom)
+            # Now find the corresponding energy
+            while !occursin("Total energy", lines[line_index]) && (line_index <= length(lines))
+                line_index += 1
+            end
+            energy = tryparse(Float64, split(lines[line_index])[end])
+            push!(energies, energy)
+        end
+    end
+    return energies, labels, geometries
+end
+
+"""
 Parses xyz trajectory from Q-Chem aimd run.
 Only writes gometry if the step is successfully completed.
 """
