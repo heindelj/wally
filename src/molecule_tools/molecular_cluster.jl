@@ -73,7 +73,7 @@ function build_cluster(geom::AbstractMatrix{Float64}, labels::AbstractVector{Str
     Default method for building a molecular cluster. Uses covalent radius definition of bonding and centroid as position of molecular subunits.
     """
     nl = KDTree(geom)
-    indices, dists = knn(nl, geom, max_number_of_atoms+1, true)
+    indices, dists = knn(nl, geom, length(labels) > max_number_of_atoms+1 ? max_number_of_atoms+1 : length(labels), true)
 
     cluster_indices = Vector{Vector{Int}}()
     for i in 1:length(labels)
@@ -148,4 +148,21 @@ function write_n_nearest_neighbors(geoms::AbstractVector{Matrix{Float64}}, label
     append!.((final_labels_out,), labels_out)
     append!.((final_geoms_out,), geoms_out)
     write_xyz(file_name, [string(length(final_labels_out[j]), "\n") for j in 1:length(final_labels_out)], final_labels_out, final_geoms_out)
+end
+
+function get_fragmented_geoms_and_labels(geoms::AbstractVector{Matrix{Float64}}, labels::AbstractVector{Vector{String}})
+    fragmented_geoms = Vector{Matrix{Float64}}[]
+    fragment_labels = Vector{Vector{String}}[]
+    for i in eachindex(geoms)
+        cluster = build_cluster(geoms[i], labels[i])
+        fragments = Matrix{Float64}[]
+        sub_fragment_labels = Vector{String}[]
+        for i_cluster in eachindex(cluster.indices)
+            push!(fragments, geoms[i][:, sort(cluster.indices[i_cluster])])
+            push!(sub_fragment_labels, labels[i][sort(cluster.indices[i_cluster])])
+        end
+        push!(fragmented_geoms, fragments)
+        push!(fragment_labels, sub_fragment_labels)
+    end
+    return fragment_labels, fragmented_geoms
 end

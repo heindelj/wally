@@ -145,6 +145,28 @@ function write_multi_input_file(infile_name::String, geoms::AbstractVector{Matri
     write_multi_input_file(infile_name, geoms, [labels for _ in eachindex(geoms)], rem_input, charge, multiplicity, read_rem_string_from_file)
 end
 
+"""
+Takes a collection of geometries, labels, charges, and multiplicities
+and generates a Q-Chem input file for each of them in a separate file.
+The file are specified by an integer that goes in the file name.
+The same rem input is used for all geometries.
+"""
+function write_separate_input_files_for_fragments(infile_name::String, geoms::AbstractVector{Matrix{Float64}}, labels::AbstractVector{Vector{String}}, rem_input::String, fragment_charges::Vector{Int}, fragment_multiplicites::Vector{Int}, output_dir::Union{String, Nothing}=nothing)
+    file_prefix = splitext(basename(infile_name))[1]
+    dir_prefix = "."
+    if output_dir !== nothing
+        output_dir = strip(output_dir, '/')
+        dir_prefix = output_dir
+        if !isdir(output_dir)
+            mkdir(output_dir)
+        end
+    end
+
+    for i in eachindex(geoms)
+        write_input_file(string(dir_prefix, "/", file_prefix, "_", i, ".in"), geoms[i], labels[i], rem_input, fragment_charges[i], fragment_multiplicites[i])
+    end
+end
+
 function make_qchem_job(infile_name::String, coords::Matrix{Float64}, labels::Vector{String}, rem_input::String, charge::Int, multiplicity::Int)
     """
     Takes the appropriate data and arguments to construct and run a Q-Chem job.
@@ -177,6 +199,17 @@ return "\n\$multipole_field
   X $x
   Y $y
   Z $z
+\$end\n"
+end
+
+function get_fchk()
+    return "\$rem
+  JOBTYPE sp
+  method wB97X-V
+  BASIS def2-qzvppd
+  SYMMETRY FALSE
+  SYM_IGNORE TRUE
+  IQMOL_FCHK true
 \$end\n"
 end
 

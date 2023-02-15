@@ -294,11 +294,14 @@ function parse_xyz_from_EDA_input(infile::String)
     lines = readlines(infile)
     labels = String[]
     coords = Vector{Float64}[]
+    final_labels = Vector{String}[]
+    final_coords = Matrix{Float64}[]
     in_molecule_block = false
+    found_fragment_separator = false
     for line in lines
         if in_molecule_block
             split_line = split(line)
-            if length(split_line) == 4
+            if length(split_line) == 4 && found_fragment_separator
                 if all(isletter, strip(split_line[1], ('+', '-')))
                     xyz = tryparse.((Float64,), split_line[2:4])
                     if !any(isnothing, xyz)
@@ -306,16 +309,27 @@ function parse_xyz_from_EDA_input(infile::String)
                         push!(labels, strip(split_line[1], ('+', '-')))
                     end
                 end
+            elseif found_fragment_separator == false
+                if occursin("--", line)
+                    found_fragment_separator = true
+                end
             end
         end
         if occursin("\$molecule", line)
             in_molecule_block = true
         end
-        if occursin("\$end", line)
-            return labels, reduce(hcat, coords)
+        if occursin("\$end", line) && in_molecule_block
+            if found_fragment_separator
+                push!(final_labels, labels)
+                push!(final_coords, reduce(hcat, coords))
+            end
+            in_molecule_block = false
+            found_fragment_separator = false
+            labels = String[]
+            coords = Vector{Float64}[]
         end
     end
-    return nothing
+    return final_labels, final_coords
 end
 
 """
@@ -380,6 +394,43 @@ function write_xyz_and_csv_from_EDA_scans(folder_path::String, csv_outfile::Stri
     geom_index = [1:nrow(df)...]
     df[!, :index] = geom_index
     write_xyz(xyz_outfile, [string(length(all_labels[i]), "\n") for i in eachindex(all_labels)], all_labels, all_geoms)
+    df[!, :xyz_file] = [xyz_outfile for _ in eachrow(df)]
+    CSV.write(csv_outfile, df)
+    return
+end
+
+function write_xyz_and_csv_from_EDA_calculation(eda_job_output_file::String, csv_outfile::String, xyz_outfile::String)
+
+    # get xyz coordinates from input files
+    labels, geoms = parse_xyz_from_EDA_input(eda_job_output_file)
+
+    # get EDA data from output files
+    eda_data = Dict(
+        :cls_elec => Float64[],
+        :elec => Float64[],
+        :mod_pauli => Float64[],
+        :pauli => Float64[],
+        :disp => Float64[],
+        :pol => Float64[],
+        :ct => Float64[]
+    )
+
+    parse_EDA_terms!(eda_data, eda_job_output_file)
+    column_lengths = [length(eda_data[key]) for key in keys(eda_data)]
+    if !allequal(column_lengths)
+        for i in eachindex(column_lengths)
+            if column_lengths[i] == 0
+                key = [keys(eda_data)...][i]
+                [push!(eda_data[key], 0.0) for _ in 1:maximum(column_lengths)]
+            end
+        end
+    end
+    column_lengths = [length(eda_data[key]) for key in keys(eda_data)]
+    @assert allequal(column_lengths) "All columns of EDA data don't have equal length. Parsing failed."
+    df = DataFrame(eda_data)
+    geom_index = [1:nrow(df)...]
+    df[!, :index] = geom_index
+    write_xyz(xyz_outfile, [string(length(labels[i]), "\n") for i in eachindex(labels)], labels, geoms)
     df[!, :xyz_file] = [xyz_outfile for _ in eachrow(df)]
     CSV.write(csv_outfile, df)
     return
