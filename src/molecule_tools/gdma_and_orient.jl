@@ -1,12 +1,21 @@
 include("qchem_input_generator.jl")
 include("read_xyz.jl")
 include("molecular_cluster.jl")
+using ProgressMeter
+
+function write_fchk_input_files(infile_name::String, geoms::AbstractVector{Matrix{Float64}}, labels::AbstractVector{Vector{String}}, rem_input::String)
+    write_fchk_input_files(infile_name, geoms, labels, rem_input, zeros(Int, length(geoms)), ones(Int, length(geoms)))
+end
 
 function write_fchk_input_files(infile_name::String, geoms::AbstractVector{Matrix{Float64}}, labels::AbstractVector{Vector{String}}, rem_input::String, fragment_charges::Vector{Int}, fragment_multiplicites::Vector{Int})
     if !isdir("fchk_files")
         mkdir("fchk_files")
     end
     write_separate_input_files_for_fragments(infile_name, geoms, labels, rem_input, fragment_charges, fragment_multiplicites, "fchk_files")
+end
+
+function write_fchk_input_files_multiple_fragmented_geoms(infile_name::String, geoms::AbstractVector{Matrix{Float64}}, labels::AbstractVector{Vector{String}}, rem_input::String, fragment_indices::Vector{Vector{Int}})
+    write_fchk_input_files_multiple_fragmented_geoms(infile_name, geoms, labels, rem_input, fragment_indices, zeros(Int, length(fragment_indices)), ones(Int, length(fragment_indices)))
 end
 
 function write_fchk_input_files_multiple_fragmented_geoms(infile_name::String, geoms::AbstractVector{Matrix{Float64}}, labels::AbstractVector{Vector{String}}, rem_input::String, fragment_indices::Vector{Vector{Int}}, fragment_charges::Vector{Int}, fragment_multiplicites::Vector{Int})
@@ -66,6 +75,22 @@ function write_and_run_gdma_input_file(fchk_file::String, output_dir::Union{Noth
     cd("..")
 end
 
+function write_and_run_many_gdma_input_files(fchk_dir::String)
+    output_dir = "gdma_files"
+    mkpath(output_dir)
+    fchk_dir = strip(fchk_dir, '/')
+    all_files = readdir(fchk_dir)
+
+    all_fchk_files = String[]
+    for i in eachindex(all_files)
+        if occursin(".fchk", all_files[i])
+            push!(all_fchk_files, string(fchk_dir, "/", all_files[i]))
+        end
+    end
+
+    @showprogress pmap((x) -> write_and_run_gdma_input_file(x, output_dir), all_fchk_files)
+end
+
 function write_and_run_orient_input_file(punch_files::Vector{String}, output_dir::Union{Nothing,String}=nothing)
     file_prefix = splitext(punch_files[1])[1]
     if output_dir !== nothing
@@ -111,4 +136,30 @@ function write_and_run_orient_input_file(punch_files::Vector{String}, output_dir
     return nothing
 end
 
-#TODO: Implement the main function which will set up and run the next stage of the calculation.
+function write_and_run_many_orient_input_files(gdma_dir::String)
+    output_dir = "orient_files"
+    mkpath(output_dir)
+    gdma_dir = strip(gdma_dir, '/')
+    all_files = readdir(gdma_dir)
+
+    
+    all_gdma_files = String[]
+    for i in eachindex(all_files)
+        if occursin(".punch", all_files[i])
+            push!(all_gdma_files, string(gdma_dir, "/", all_files[i]))
+        end
+    end
+
+    geom_nums = Int[]
+    for i in eachindex(all_gdma_files)
+        m = match(r"_[0-9]+_", all_gdma_files[i])
+        geom_num = tryparse(Int, string(match(r"[0-9]+", m.match).match))
+        push!(geom_nums, geom_num)
+    end
+    grouped_gdma_files = [String[] for _ in 1:length(Set(geom_nums))]
+    for i in eachindex(geom_nums)
+        push!(grouped_gdma_files[geom_nums[i]], all_gdma_files[i])
+    end
+
+    @showprogress pmap((x) -> write_and_run_orient_input_file(x, output_dir), grouped_gdma_files)
+end
