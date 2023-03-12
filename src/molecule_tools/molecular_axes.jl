@@ -24,9 +24,7 @@ function rotate_coords_around_axis_by_angle(coords::AbstractMatrix, axis::Abstra
     if center_axis === nothing
         center_axis = centroid(coords)
     end
-    #display(coords)
     coords .-= center_axis
-    #display(coords)
     coords = reshape(reinterpret(Float64, [R * col for col in eachcol(coords)]), 3, :) .+ center_axis
     return coords
 end

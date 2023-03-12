@@ -1,4 +1,5 @@
 include("nwchem_input_generator.jl")
+using Combinatorics
 
 """
 Writes a single Q-Chem input file.
@@ -52,10 +53,6 @@ function write_multi_input_file(infile_name::String, geoms::AbstractVector{Matri
                 end
             end
             if (i_piece % 3) == 0 || i_piece == num_pieces
-                #open(string(splitext(infile_name)[1], "_part_", names_written, ".slurm"), "w") do io
-                #    slurm_string = write_lawrencium_slurm_scripts(names_to_write)
-                #    write(io, slurm_string)
-                #end
                 names_written += 1
                 empty!(names_to_write)
             end
@@ -74,10 +71,6 @@ function write_multi_input_file(infile_name::String, geoms::AbstractVector{Matri
                 end
             end
         end
-        #open(string(splitext(infile_name)[1], ".slurm"), "w") do io
-        #    slurm_string = write_lawrencium_slurm_scripts([used_input_name])
-        #    write(io, slurm_string)
-        #end
     end
 end
 
@@ -98,10 +91,20 @@ function write_multi_input_file_fragments(
     multiplicity::Int,
     fragment_indices::Vector{Vector{Int}},
     fragment_charges::Vector{Int},
-    fragment_multiplicities::Vector{Int}
+    fragment_multiplicities::Vector{Int},
+    append::Bool=true
 )
+    mode = "a"
+    if !append
+        mode = "w"
+    end
     rem_input_string = rem_input
-    open(infile_name, "w") do io
+    if isfile(infile_name) && append
+        open(infile_name, mode) do io
+            write(io, "\n@@@\n\n")
+        end
+    end
+    open(infile_name, mode) do io
         for i in eachindex(geoms)
             write(io, "\$molecule\n")
             write(io, string(charge, " ", multiplicity, "\n"))
@@ -124,6 +127,105 @@ function write_multi_input_file_fragments(
                 write(io, "\n@@@\n\n")
             end
         end
+    end
+end
+
+"""
+Same as above but for a single geometry.
+"""
+function write_input_file_fragments(
+    infile_name::String,
+    coords::AbstractMatrix{Float64},
+    labels::AbstractVector{String},
+    rem_input::String,
+    charge::Int,
+    multiplicity::Int,
+    fragment_indices::Vector{Vector{Int}},
+    fragment_charges::Vector{Int},
+    fragment_multiplicities::Vector{Int},
+    append::Bool=true
+)
+    mode = "a"
+    if !append
+        mode = "w"
+    end
+    rem_input_string = rem_input
+    if isfile(infile_name) && append
+        open(infile_name, mode) do io
+            write(io, "\n@@@\n\n")
+        end
+    end
+    open(infile_name, mode) do io
+        write(io, "\$molecule\n")
+        write(io, string(charge, " ", multiplicity, "\n"))
+        write(io, "--\n")
+        for i_frag in eachindex(fragment_indices)
+            if fragment_indices[i_frag][1] <= size(coords, 2)
+                write(io, string(fragment_charges[i_frag], " ", fragment_multiplicities[i_frag], "\n"))
+                geom_string = geometry_to_string(coords[:, fragment_indices[i_frag]], labels[fragment_indices[i_frag]])
+                write(io, geom_string)
+                if i_frag != length(fragment_indices)
+                    write(io, "--\n")
+                end
+            else
+                @assert false "Provided fragment index which is larger than the number of indices in the geometry"
+            end
+        end
+        write(io, "\$end\n\n")
+        write(io, rem_input_string)
+    end
+end
+
+"""
+Writes input files for arbitrary order of the MBE. All fragments of an order go in the same file.
+Currently all fragments must be neutral and closed shell.
+"""
+function write_mbe_inputs(
+    infile_name::String,
+    coords::AbstractMatrix{Float64},
+    labels::AbstractVector{String},
+    rem_input::String,
+    fragment_indices::AbstractVector{Vector{Int}},
+    max_order::Int=2,
+    include_full_system::Bool=true
+)
+    file_prefix = splitext(infile_name)[1]
+    for i_mbe in 2:max_order
+        for fragment_indices_combination in combinations(fragment_indices, i_mbe)
+            flat_indices = reduce(vcat, fragment_indices_combination)
+            @views subsystem_coords = coords[:, flat_indices]
+            @views subsystem_labels = labels[flat_indices]
+            shifted_indices = [zero(fragment_indices_combination[i]) for i in eachindex(fragment_indices_combination)]
+            index = 1
+            for i_frag in eachindex(shifted_indices)
+                for i in eachindex(shifted_indices[i_frag])
+                    shifted_indices[i_frag][i] = index
+                    index += 1
+                end
+            end
+            write_input_file_fragments(
+                string(file_prefix, "_", i_mbe, "_body.in"),
+                subsystem_coords,
+                subsystem_labels,
+                rem_input,
+                0, 1,
+                shifted_indices,
+                zeros(Int, length(shifted_indices)),
+                ones(Int, length(shifted_indices))
+            )
+        end
+    end
+    if include_full_system
+        write_input_file_fragments(
+            string(file_prefix, "_full_system.in"),
+            coords,
+            labels,
+            rem_input,
+            0, 1,
+            fragment_indices,
+            zeros(Int, length(fragment_indices)),
+            ones(Int, length(fragment_indices))
+        )
     end
 end
 
@@ -165,6 +267,13 @@ function write_separate_input_files_for_fragments(infile_name::String, geoms::Ab
     for i in eachindex(geoms)
         write_input_file(string(dir_prefix, "/", file_prefix, "_", i, ".in"), geoms[i], labels[i], rem_input, fragment_charges[i], fragment_multiplicites[i])
     end
+end
+
+"""
+Same as above but for uncharged singlets.
+"""
+function write_separate_input_files_for_fragments(infile_name::String, geoms::AbstractVector{Matrix{Float64}}, labels::AbstractVector{Vector{String}}, rem_input::String, output_dir::Union{String, Nothing}=nothing)
+    write_separate_input_files_for_fragments(infile_name, geoms, labels, rem_input, zeros(Int, length(geoms)), ones(Int, length(geoms)))
 end
 
 function make_qchem_job(infile_name::String, coords::Matrix{Float64}, labels::Vector{String}, rem_input::String, charge::Int, multiplicity::Int)
@@ -225,7 +334,7 @@ function eda_input()
   MAX_SCF_CYCLES 200
   SYMMETRY FALSE
   SYM_IGNORE TRUE
-  MEM_STATIC 2000
+  mem_total  16000
   BASIS_LIN_DEP_THRESH 8
   THRESH 14
   SCF_CONVERGENCE 8

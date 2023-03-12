@@ -18,7 +18,7 @@ function optimize_xyz(geom::AbstractVecOrMat{<:AbstractFloat}, potential::Abstra
     return (Optim.minimum(results), final_geom)
 end
 
-function optimize_xyz(geom::AbstractMatrix{<:AbstractFloat}, potential_function::Function; f_tol=1e-6, g_tol=1e-5, x_tol=1e-4, iterations=5000, show_every=25, show_trace::Bool=true, kwargs...)
+function optimize_xyz(geom::AbstractMatrix{<:AbstractFloat}, potential_function::Function; f_tol=1e-6, g_tol=1e-6, x_tol=1e-5, iterations=5000, show_every=25, show_trace::Bool=true, kwargs...)
     shape = size(geom)
     results = optimize(potential_function,
                        geom,

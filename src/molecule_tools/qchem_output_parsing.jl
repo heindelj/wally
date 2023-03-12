@@ -99,29 +99,35 @@ end
 Parses EDA terms from an EDA calculation.
 Appends output to existing dictionary.
 """
-function parse_EDA_terms!(eda_dict::Dict{Symbol, Vector{Float64}}, output_file::String)
+function parse_EDA_terms!(eda_dict::Dict{Symbol, Vector{Float64}}, output_file::String, parse_fragment_energies::Bool=true, fragment_zero::Float64=0.0)
     lines = readlines(output_file)
-    for line in lines
+    for (i, line) in enumerate(lines)
         if occursin("(ELEC)", line)
             push!(eda_dict[:elec], tryparse(Float64, split(line)[5]))
-        end
-        if occursin("(PAULI)", line)
+        elseif occursin("(PAULI)", line)
             push!(eda_dict[:pauli], tryparse(Float64, split(line)[5]))
-        end
-        if occursin("E_disp   (DISP)", line)
+        elseif occursin("E_disp   (DISP)", line)
             push!(eda_dict[:disp], tryparse(Float64, split(line)[5]))
-        end
-        if occursin("(CLS ELEC)", line)
+        elseif occursin("(CLS ELEC)", line)
             push!(eda_dict[:cls_elec], tryparse(Float64, split(line)[6]))
-        end
-        if occursin("(MOD PAULI)", line)
+        elseif occursin("(MOD PAULI)", line)
             push!(eda_dict[:mod_pauli], tryparse(Float64, split(line)[6]))
-        end
-        if occursin("POLARIZATION", line)
+        elseif occursin("POLARIZATION", line)
             push!(eda_dict[:pol], tryparse(Float64, split(line)[2]))
-        end
-        if occursin("CHARGE TRANSFER", line)
+        elseif occursin("CHARGE TRANSFER", line)
             push!(eda_dict[:ct], tryparse(Float64, split(line)[3]))
+        elseif occursin("Fragment Energies", line)
+            if parse_fragment_energies && haskey(eda_dict, :deform)
+                index = copy(i+1)
+                fragment_sum = 0.0
+                num_fragments = 0
+                while !occursin("--------", lines[index])
+                    fragment_sum += tryparse(Float64, split(lines[index])[2])
+                    index += 1
+                    num_fragments += 1
+                end
+                push!(eda_dict[:deform], (fragment_sum - num_fragments * fragment_zero) * 627.51 * 4.184)
+            end
         end
     end
     return
@@ -185,6 +191,33 @@ function parse_geometries(output_file::String)
 end
 
 """
+Parses the geometry from a Q-Chem optimization.
+"""
+function parse_geometry_optimization(output_file::String)
+    lines = readlines(output_file)
+    for (i, line) in enumerate(lines)
+        if occursin("CONVERGED", line)
+            line_index = i + 6
+            natoms = 0
+            while !occursin("------------", lines[line_index])
+                natoms += 1
+                line_index += 1
+            end
+            line_index = i + 6
+            labels = ["" for _ in 1:natoms]
+            geom = zeros(3, natoms)
+            for i_geom in 1:natoms
+                split_line = split(lines[line_index])
+                labels[i_geom] = split_line[2]
+                @views geom[:, i_geom] = tryparse.((Float64,), split_line[3:5])
+                line_index += 1
+            end
+            return labels, geom
+        end
+    end
+end
+
+"""
 Parses the geometries used by Q-Chem in a calculation.
 Generically, these may be different than what was input by
 the user since Q-Chem will translate and rotate the molecule
@@ -214,13 +247,13 @@ function parse_geometries_and_energies(output_file::String)
                 @views new_geom[:, i_geom] = tryparse.((Float64,), split_line[3:5])
                 line_index += 1
             end
-            push!(labels, new_labels)
-            push!(geometries, new_geom)
             # Now find the corresponding energy
             while !occursin("Total energy", lines[line_index]) && (line_index <= length(lines))
                 line_index += 1
             end
             energy = tryparse(Float64, split(lines[line_index])[end])
+            push!(labels, new_labels)
+            push!(geometries, new_geom)
             push!(energies, energy)
         end
     end
@@ -412,26 +445,104 @@ function write_xyz_and_csv_from_EDA_calculation(eda_job_output_file::String, csv
         :pauli => Float64[],
         :disp => Float64[],
         :pol => Float64[],
-        :ct => Float64[]
+        :ct => Float64[],
+        :int => Float64[],
     )
 
     parse_EDA_terms!(eda_data, eda_job_output_file)
-    column_lengths = [length(eda_data[key]) for key in keys(eda_data)]
-    if !allequal(column_lengths)
-        for i in eachindex(column_lengths)
-            if column_lengths[i] == 0
-                key = [keys(eda_data)...][i]
-                [push!(eda_data[key], 0.0) for _ in 1:maximum(column_lengths)]
-            end
-        end
+    # populate interaction energy key
+    for i in eachindex(eda_data[:cls_elec])
+        push!(eda_data[:int], eda_data[:cls_elec][i] + eda_data[:mod_pauli][i] + eda_data[:ct][i] + eda_data[:disp][i] + eda_data[:pol][i])
     end
     column_lengths = [length(eda_data[key]) for key in keys(eda_data)]
     @assert allequal(column_lengths) "All columns of EDA data don't have equal length. Parsing failed."
+
     df = DataFrame(eda_data)
     geom_index = [1:nrow(df)...]
     df[!, :index] = geom_index
     write_xyz(xyz_outfile, [string(length(labels[i]), "\n") for i in eachindex(labels)], labels, geoms)
-    df[!, :xyz_file] = [xyz_outfile for _ in eachrow(df)]
     CSV.write(csv_outfile, df)
     return
+end
+
+"""
+Takes a full EDA calculation and the calculations on corresponding
+many-body subsystems. Returns a dictionary of each term at each
+many-body level and the full system. Also returns the full system geometry.
+"""
+function process_EDA_mbe_calculation(full_output_file::String, mbe_output_files::String...)
+
+    E_h2o = -76.440791829812
+    # get EDA data from output files
+    total_eda_data = Dict(
+        :cls_elec => Float64[],
+        :elec => Float64[],
+        :mod_pauli => Float64[],
+        :pauli => Float64[],
+        :disp => Float64[],
+        :pol => Float64[],
+        :ct => Float64[],
+        :int => Float64[],
+        :deform => Float64[],
+        :total => Float64[]
+    )
+
+    for mbe_file in mbe_output_files
+        mbe_eda_data = Dict(
+            :cls_elec => Float64[],
+            :elec => Float64[],
+            :mod_pauli => Float64[],
+            :pauli => Float64[],
+            :disp => Float64[],
+            :pol => Float64[],
+            :ct => Float64[],
+            :int => Float64[],
+            :deform => Float64[]
+        )
+        parse_EDA_terms!(mbe_eda_data, mbe_file, true, E_h2o)
+        for key in keys(mbe_eda_data)
+            if key != :int
+                term_total = sum(mbe_eda_data[key])
+                push!(total_eda_data[key], term_total / 4.184)
+            end
+        end
+        total_interaction = (
+            total_eda_data[:cls_elec][end] +
+            total_eda_data[:mod_pauli][end] +
+            total_eda_data[:disp][end] +
+            total_eda_data[:pol][end] +
+            total_eda_data[:ct][end]
+        )
+        push!(total_eda_data[:int], total_interaction)
+    end
+    parse_EDA_terms!(total_eda_data, full_output_file, true, E_h2o)
+    for key in keys(total_eda_data)
+        if length(total_eda_data[key]) > 0 && key != :int
+            total_eda_data[key][end] /= 4.184
+        end
+    end
+    total_interaction = (
+        total_eda_data[:cls_elec][end] +
+        total_eda_data[:mod_pauli][end] +
+        total_eda_data[:disp][end] +
+        total_eda_data[:pol][end] +
+        total_eda_data[:ct][end]
+    )
+    push!(total_eda_data[:int], total_interaction)
+    for i in eachindex(total_eda_data[:int])
+        if i < length(total_eda_data[:int])
+            total_eda_data[:deform][i] = total_eda_data[:deform][end]
+        end
+        push!(total_eda_data[:total], total_eda_data[:int][i] + total_eda_data[:deform][end])
+        # ^^ Always add the end of deformation since the MBE one gets summed too many times
+        # and the deformation at an MBE level and full level are always the same.
+    end
+
+    # append total many-body contribution to each term
+    for key in keys(total_eda_data)
+        push!(total_eda_data[key], total_eda_data[key][end] - total_eda_data[key][1])
+    end
+
+    labels, coords = parse_xyz_from_EDA_input(full_output_file)
+    return labels[1], coords[1], total_eda_data
 end
