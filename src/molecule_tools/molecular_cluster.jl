@@ -23,57 +23,61 @@ molecular units rather than the nearest atoms.
 """
 
 struct Cluster
-    centers::Vector{SVector{3, Float64}} # location of each molecule
+    centers::Vector{SVector{3,Float64}} # location of each molecule
     indices::Vector{Vector{Int}} # maps from molecule indices to full system indices
     geom::Matrix{Float64} # full system coordinates
     labels::Vector{String} # full system labels
 end
 
 function is_bonded(distance::Float64, label1::String, label2::String)
-    return distance < (covalent_radius(label1) + covalent_radius(label2) + 0.4)
+    exclusion_list = ["Li", "Na", "K", "Rb", "Cs", "F", "Cl", "Br", "I"]
+    if label1 ∉ exclusion_list && label2 ∉ exclusion_list
+        return distance < (covalent_radius(label1) + covalent_radius(label2) + 0.4)
+    end
+    return false
 end
 
-function find_bonded_atoms!(
-        neighboring_indices::Vector{Vector{Int}},
-        neighbor_dists::Vector{Vector{Float64}},
-        molecular_indices::Vector{Int},
-        starting_index::Int,
-        labels::Vector{String},
-        max_neighbors::Int=8)
-    """
-    neighboring_indices and neighbor_dists are vectors of indices
-    and distances to that index for all atoms. The indices are sorted
-    against the distance but we don't utilize that fact.
+"""
+neighboring_indices and neighbor_dists are vectors of indices
+and distances to that index for all atoms. The indices are sorted
+against the distance but we don't utilize that fact.
 
-    We use the above arrays to find all bonded neighbors of a particular
-    atom and then recursively follow the neighbors until the only neighbor
-    of each atom is itself or an atom contained in the list already.
-    """
+We use the above arrays to find all bonded neighbors of a particular
+atom and then recursively follow the neighbors until the only neighbor
+of each atom is itself or an atom contained in the list already.
+"""
+function find_bonded_atoms!(
+    neighboring_indices::Vector{Vector{Int}},
+    neighbor_dists::Vector{Vector{Float64}},
+    molecular_indices::Vector{Int},
+    starting_index::Int,
+    labels::Vector{String}
+)
     for i in 1:length(neighbor_dists[starting_index])
         neighbor_idx = neighboring_indices[starting_index][i]
         if is_bonded(neighbor_dists[starting_index][i],
-                     labels[starting_index],
-                     labels[neighbor_idx])
+            labels[starting_index],
+            labels[neighbor_idx])
             if neighbor_idx ∉ molecular_indices
                 push!(molecular_indices, neighbor_idx)
                 if (neighbor_idx != starting_index)
                     find_bonded_atoms!(neighboring_indices,
-                                   neighbor_dists,
-                                   molecular_indices,
-                                   neighbor_idx,
-                                   labels)
+                        neighbor_dists,
+                        molecular_indices,
+                        neighbor_idx,
+                        labels)
                 end
             end
         end
     end
 end
 
-function build_cluster(geom::AbstractMatrix{Float64}, labels::AbstractVector{String}, max_number_of_atoms::Int=8)
+function build_cluster(geom::AbstractMatrix{Float64}, labels::AbstractVector{String}, max_number_of_atoms::Int=10)
     """
     Default method for building a molecular cluster. Uses covalent radius definition of bonding and centroid as position of molecular subunits.
     """
     nl = KDTree(geom)
-    indices, dists = knn(nl, geom, length(labels) > max_number_of_atoms+1 ? max_number_of_atoms+1 : length(labels), true)
+    indices, dists = knn(nl, geom, length(labels) > max_number_of_atoms + 1 ? max_number_of_atoms + 1 : length(labels), true)
 
     cluster_indices = Vector{Vector{Int}}()
     for i in 1:length(labels)
@@ -84,22 +88,47 @@ function build_cluster(geom::AbstractMatrix{Float64}, labels::AbstractVector{Str
         elseif sum(i .∈ cluster_indices) == 0
             molecular_indices = Int[]
             find_bonded_atoms!(indices, dists, molecular_indices, i, labels)
+            if isempty(molecular_indices)
+                # we should only get here if the atom is in the exclusion list
+                # So, we just add that index by itself. 
+                push!(molecular_indices, i)
+            end
             push!(cluster_indices, molecular_indices)
         end
     end
-    cluster_centers = [SVector{3, Float64}(centroid(geom[:,index_set])) for index_set in cluster_indices]
+    cluster_centers = [SVector{3,Float64}(centroid(geom[:, index_set])) for index_set in cluster_indices]
     return Cluster(cluster_centers, cluster_indices, geom, labels)
 end
 
+"""
+Finds the n nearest neighbors for a collection of indices.
+The center_indices are the indices for the cluster, not the geometry
+from which the cluster is derived. So, the easiest way to get these
+indices is by looking up based on the molecular formula.
+"""
 function find_n_nearest_neighbors(cluster::Cluster, center_indices::Vector{Int}, n::Int, sortres::Bool=true)
-    """
-    Finds the n nearest neighbors for a collection of indices.
-    The center_indices are the indices for the cluster, not the geometry
-    from which the cluster is derived. So, the easiest way to get these
-    indices is by looking up based on the molecular formula.
-    """
     nl = KDTree(cluster.centers)
-    neighbor_indices, _ = knn(nl, cluster.centers[center_indices], n+1, sortres) # the self of something is counted as a neighbor so add one to number requested
+    neighbor_indices, _ = knn(nl, cluster.centers[center_indices], n + 1, sortres) # the self of something is counted as a neighbor so add one to number requested
+    labels_out = Vector{Vector{String}}()
+    geoms_out = Vector{Matrix{Float64}}()
+    for i in 1:length(neighbor_indices)
+        total_indices = reduce(vcat, cluster.indices[neighbor_indices[i]])
+        push!(labels_out, cluster.labels[total_indices])
+        push!(geoms_out, cluster.geom[:, total_indices])
+    end
+    return labels_out, geoms_out
+end
+
+"""
+Finds the n nearest neighbors for a collection of indices.
+The center_indices are the indices for the cluster, not the geometry
+from which the cluster is derived. So, the easiest way to get these
+indices is by looking up based on the molecular formula.
+Range is a distance in the same units as that of the cluster.
+"""
+function find_neighbors_within_range(cluster::Cluster, center_indices::Vector{Int}, range::Float64, sortres::Bool=true)
+    nl = KDTree(cluster.centers)
+    neighbor_indices, _ = inrange(nl, cluster.centers[center_indices], range, sortres)
     labels_out = Vector{Vector{String}}()
     geoms_out = Vector{Matrix{Float64}}()
     for i in 1:length(neighbor_indices)
@@ -127,14 +156,14 @@ end
 
 function write_n_nearest_neighbors(geoms::AbstractVector{Matrix{Float64}}, labels::AbstractVector{Vector{String}}, chemical_formula::Vector{String}, n::Int, file_name::String="subclusters.xyz")
     labels_out = [Vector{String}[] for _ in 1:Threads.nthreads()]
-    geoms_out  = [Matrix{Float64}[] for _ in 1:Threads.nthreads()]
+    geoms_out = [Matrix{Float64}[] for _ in 1:Threads.nthreads()]
     Threads.@threads for i in ProgressBar(1:length(geoms))
         id = Threads.threadid()
         cluster = build_cluster(geoms[i], labels[i])
         labels_frame, geoms_frame = find_n_nearest_neighbors(cluster, chemical_formula, n)
         append!(labels_out[id], labels_frame)
         append!(geoms_out[id], geoms_frame)
-        
+
         if (i % 200) == 0
             final_labels_out = Vector{String}[]
             final_geoms_out = Matrix{Float64}[]

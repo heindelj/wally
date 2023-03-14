@@ -107,7 +107,7 @@ distance of the two molecules.
 function sample_psuedorandom_dimers(
     fragment_1::AbstractMatrix{Float64}, labels_1::Vector{String},
     fragment_2::AbstractMatrix{Float64}, labels_2::Vector{String},
-    num_geoms_total::Int=2500, num_geoms_per_direction::Int=5,
+    num_geoms_total::Int=4000, num_geoms_per_direction::Int=5,
     dR_min::Float64 = -0.75, dR_max::Float64 = 0.6; num_to_skip::Int=0
 )
     # ensure fragment centers of mass are at the origin
@@ -150,18 +150,18 @@ and we randomly sample one of these each time.
 function sample_psuedorandom_dimers(
     fragment_1::AbstractVector{Matrix{Float64}}, labels_1::Vector{String},
     fragment_2::AbstractVector{Matrix{Float64}}, labels_2::Vector{String},
-    num_geoms_total::Int=2500, num_geoms_per_direction::Int=5,
+    num_geoms_total::Int=4000, num_geoms_per_direction::Int=5,
     dR_min::Float64=-0.75, dR_max::Float64=0.6; num_to_skip::Int=0
 )
-    frag_1 = fragment_1[rand(1:length(fragment_1))]
-    frag_2 = fragment_2[rand(1:length(fragment_2))]
     all_labels = Vector{String}[]
     all_geoms = Matrix{Float64}[]
     for i in 1:(num_geoms_total ÷ num_geoms_per_direction)
+        frag_1 = fragment_1[rand(1:length(fragment_1))]
+        frag_2 = fragment_2[rand(1:length(fragment_2))]
         sampled_labels, sampled_geoms = sample_psuedorandom_dimers(
             frag_1, labels_1, frag_2, labels_2,
             num_geoms_per_direction, num_geoms_per_direction,
-            dR_min, dR_max, num_to_skip=i
+            dR_min, dR_max, num_to_skip=(num_to_skip + i)
         )
         append!(all_labels, sampled_labels)
         append!(all_geoms, sampled_geoms)

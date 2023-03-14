@@ -361,6 +361,11 @@ function parse_xyz_from_EDA_input(infile::String)
             labels = String[]
             coords = Vector{Float64}[]
         end
+        if occursin("fatal error", line) && !in_molecule_block
+            @warn string("Found failed job corresponding to job input ", length(final_labels), ". Throwing away the geometry and continuing.")
+            pop!(final_labels)
+            pop!(final_coords)
+        end
     end
     return final_labels, final_coords
 end
