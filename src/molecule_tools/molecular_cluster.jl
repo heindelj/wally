@@ -120,23 +120,18 @@ function find_n_nearest_neighbors(cluster::Cluster, center_indices::Vector{Int},
 end
 
 """
-Finds the n nearest neighbors for a collection of indices.
-The center_indices are the indices for the cluster, not the geometry
-from which the cluster is derived. So, the easiest way to get these
-indices is by looking up based on the molecular formula.
+Finds the n nearest neighbors for an index.
+The center_index is the index for the cluster, not the geometry
+from which the cluster is derived. So, the easiest way to get the
+index is by looking up based on the molecular formula.
 Range is a distance in the same units as that of the cluster.
+Excluded indices will the centers in the provided array.
+This is useful if you want to find the neighbors in a sub-cluster
+you already have without including the neighbors in that sub-cluster.
 """
-function find_neighbors_within_range(cluster::Cluster, center_indices::Vector{Int}, range::Float64, sortres::Bool=true)
+function find_neighbors_within_range(cluster::Cluster, center_index::Int, range::Float64, sortres::Bool=true)
     nl = KDTree(cluster.centers)
-    neighbor_indices, _ = inrange(nl, cluster.centers[center_indices], range, sortres)
-    labels_out = Vector{Vector{String}}()
-    geoms_out = Vector{Matrix{Float64}}()
-    for i in 1:length(neighbor_indices)
-        total_indices = reduce(vcat, cluster.indices[neighbor_indices[i]])
-        push!(labels_out, cluster.labels[total_indices])
-        push!(geoms_out, cluster.geom[:, total_indices])
-    end
-    return labels_out, geoms_out
+    return inrange(nl, cluster.centers[center_index], range, sortres)
 end
 
 function molecules_by_formula(cluster::Cluster, chemical_formula::Vector{String})
@@ -194,4 +189,53 @@ function get_fragmented_geoms_and_labels(geoms::AbstractVector{Matrix{Float64}},
         push!(fragment_labels, sub_fragment_labels)
     end
     return fragment_labels, fragmented_geoms
+end
+
+"""
+Samples subclusters from a trajectory centered on the provided
+chemical formula. All fragments within the given range are included
+in the cluster. The sample will be expanded
+"""
+function sample_random_clusters_within_range(
+    geoms::AbstractVector{Matrix{Float64}},
+    labels::AbstractVector{Vector{String}},
+    chemical_formula::Vector{String},
+    radius::Float64,
+    expand_sample_if_fragment_found::Vector{Vector{String}},
+    expansion_radius::Float64,
+    skip_first_n_frames::Int
+)
+    cluster = build_cluster(geoms[1], labels[1])
+    center_indices = molecules_by_formula(cluster, chemical_formula)
+    neighbor_indices = find_neighbors_within_range(cluster, center_indices[1], radius, false)
+    fragmented_labels = [cluster.labels[cluster.indices[i]] for i in neighbor_indices]
+    fragmented_geom = [cluster.geom[:, cluster.indices[i]] for i in neighbor_indices]
+    
+    # TODO: add in the random sampling of the frames that respects
+    # how many frames we want to skip!
+
+    already_expanded = Int[] # stores expansion indices we already dealt with
+    @label recursively_expand
+    had_to_expand = false
+    for i in eachindex(expand_sample_if_fragment_found)
+        label_index = findall(x->x==expand_sample_if_fragment_found[i], fragmented_labels)[1]
+        expansion_center_index = neighbor_indices[label_index]
+        if label_index !== nothing && expansion_center_index ∉ already_expanded
+            had_to_expand = true
+            push!(already_expanded, expansion_center_index)
+            expanded_indices = find_neighbors_within_range(cluster, expansion_center_index, expansion_radius)
+            expanded_indices = setdiff(expanded_indices, neighbor_indices)
+
+            expanded_labels   = [cluster.labels[cluster.indices[i]] for i in setdiff(expanded_indices, neighbor_indices)]
+            expanded_geom     = [cluster.geom[:, cluster.indices[i]] for i in setdiff(expanded_indices, neighbor_indices)]
+            fragmented_labels = [fragmented_labels..., expanded_labels...]
+            fragmented_geom   = [fragmented_geom..., expanded_geom...]
+        end
+        if had_to_expand
+            @goto recursively_expand
+        end
+    end
+
+    # Get the other labels as well for the environment
+    return reduce(vcat, fragmented_labels), reduce(hcat, fragmented_geom)
 end
