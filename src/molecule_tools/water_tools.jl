@@ -1,8 +1,8 @@
 using LinearAlgebra
 using StaticArrays
+using NearestNeighbors
 include("units.jl")
 include("atomic_masses.jl")
-include("molecular_cluster.jl")
 
 function is_a_distance_angle_hydrogen_bond(O_donor_index::Int, H_donor_index::Int, acceptor_index::Int, coords::AbstractMatrix, distance_cutoff::Float64=2.9, angle_cutoff=120.0)
 	"""

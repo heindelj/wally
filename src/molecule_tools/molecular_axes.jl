@@ -1,7 +1,5 @@
 include("atomic_masses.jl")
-using LinearAlgebra
-using Rotations
-using Test
+using LinearAlgebra, Rotations, Test, StatsBase
 
 function center_of_mass(geom::AbstractArray{<:AbstractFloat}, masses::AbstractVector{<:AbstractFloat})
     return sum(reshape(repeat(masses, inner=3) .* vec(geom) / sum(masses), (3, :)), dims=2)
@@ -121,21 +119,6 @@ end
 
 ### KABSCH CODE ADAPTED FROM BIOMOLECULARSTRUCTURES.jl https://github.com/hng/BiomolecularStructures.jl/blob/master/src/KABSCH/kabsch.jl ###
 
-
-# Calculate root mean square deviation of two matrices A, B
-# http://en.wikipedia.org/wiki/Root-mean-square_deviation_of_atomic_positions
-function rmsd(A::AbstractArray{T}, B::AbstractArray{T}) where T <: Real
-
-    RMSD::Float64 = 0.0
-
-    # N coordinates
-    N::Int = length(A)
-
-    for i in 1:N
-        RMSD += (A[i] - B[i])^2
-    end
-    return sqrt(RMSD / N / 3.0)
-end
 
 # calculate a centroid of a matrix
 function centroid(m::AbstractArray{T,2}) where T <: Real

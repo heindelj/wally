@@ -26,8 +26,17 @@ function find_shortest_vdw_contact_distance(
     unique_atom_pairs = Set(atom_pairs)
     vdw_contact_distances = Dict{Tuple{String,String},Float64}()
     for pair in unique_atom_pairs
-        vdw_contact_distances[pair] = (vdw_radius(pair[1]) + vdw_radius(pair[2]))
-        vdw_contact_distances[(pair[2], pair[1])] = (vdw_radius(pair[1]) + vdw_radius(pair[2]))
+        radius_1 = ionic_radius(pair[1])
+        radius_2 = ionic_radius(pair[2])
+        if radius_1 == 0.0
+            radius_1 = vdw_radius(pair[1])
+        end
+        if radius_2 == 0.0
+            radius_2 = vdw_radius(pair[2])
+        end
+
+        vdw_contact_distances[pair] = radius_1 + radius_2
+        vdw_contact_distances[(pair[2], pair[1])] = radius_1 + radius_2
     end
 
 
@@ -127,9 +136,9 @@ function sample_psuedorandom_dimers(
     all_labels = Vector{String}[]
     all_geoms  = Matrix{Float64}[]
     for i in 1:(num_geoms_total ÷ num_geoms_per_direction)
-        direction = next!(seq)
+        direction = Sobol.next!(seq)
         if norm(direction) == 0.0
-            direction = next!(seq)
+            direction = Sobol.next!(seq)
         end
         normalize!(direction)
         R = rand(RotMatrix{3}) # get random orientation

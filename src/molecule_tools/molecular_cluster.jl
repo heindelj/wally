@@ -1,8 +1,10 @@
-using StaticArrays, NearestNeighbors, ProgressBars
+using StaticArrays, NearestNeighbors, ProgressBars, ProgressMeter, DelimitedFiles
 using StatsBase: countmap
 include("covalent_radii.jl")
 include("molecular_axes.jl")
 include("read_xyz.jl")
+include("water_tools.jl")
+include("nwchem_input_generator.jl")
 
 """
 The point of this it to somehow represent disjoint molecular
@@ -194,7 +196,10 @@ end
 """
 Samples subclusters from a trajectory centered on the provided
 chemical formula. All fragments within the given range are included
-in the cluster. The sample will be expanded
+in the cluster. The sample will be expanded when molecules in
+expand_sample_if_fragment_found are encountered.
+Sample metadata returned is a tuple of the frame number from which
+a cluster was sampled and the cluster number within that frame.
 """
 function sample_random_clusters_within_range(
     geoms::AbstractVector{Matrix{Float64}},
@@ -203,39 +208,291 @@ function sample_random_clusters_within_range(
     radius::Float64,
     expand_sample_if_fragment_found::Vector{Vector{String}},
     expansion_radius::Float64,
-    skip_first_n_frames::Int
+    number_of_clusters_to_sample::Int,
+    skip_first_n_frames::Int=0,
+    resample_if_found_less_than_n_neighbors::Int=5
 )
-    cluster = build_cluster(geoms[1], labels[1])
-    center_indices = molecules_by_formula(cluster, chemical_formula)
-    neighbor_indices = find_neighbors_within_range(cluster, center_indices[1], radius, false)
-    fragmented_labels = [cluster.labels[cluster.indices[i]] for i in neighbor_indices]
-    fragmented_geom = [cluster.geom[:, cluster.indices[i]] for i in neighbor_indices]
-    
-    # TODO: add in the random sampling of the frames that respects
-    # how many frames we want to skip!
+    num_frames = length(geoms)
+    @assert skip_first_n_frames < length(length(geoms)) "You requested we skip $skip_first_n_frames but there are only $num_frames frames."
 
-    already_expanded = Int[] # stores expansion indices we already dealt with
-    @label recursively_expand
-    had_to_expand = false
-    for i in eachindex(expand_sample_if_fragment_found)
-        label_index = findall(x->x==expand_sample_if_fragment_found[i], fragmented_labels)[1]
-        expansion_center_index = neighbor_indices[label_index]
-        if label_index !== nothing && expansion_center_index ∉ already_expanded
-            had_to_expand = true
+    fragment_charges = Dict(
+        ["O", "H"] => -1,
+        ["Cl"]     => -1,
+        ["I"]      => -1,
+        ["Na"]     =>  1,
+    )
+
+    all_sampled_geoms = Matrix{Float64}[]
+    all_sampled_labels = Vector{String}[]
+    all_environment_geoms = Matrix{Float64}[]
+    all_environment_labels = Vector{String}[]
+    all_sample_metadata = Tuple{Int, Int, Int}[]
+
+    frame_indices = rand((skip_first_n_frames+1):num_frames, number_of_clusters_to_sample)
+    lk = ReentrantLock()
+    # Notice that I am using goto statements here.
+    # I think it actually accomplishes the task pretty well
+    # and it is clear what it is happening. I feel no shame.
+    Threads.@threads for i_temp in ProgressBar(eachindex(frame_indices))
+        cluster_charge = fragment_charges[chemical_formula]
+        i_frame = frame_indices[i_temp]
+        cluster = build_cluster(geoms[i_frame], labels[i_frame])
+        center_indices = molecules_by_formula(cluster, chemical_formula)
+        @label original_sample
+        cluster_sample = rand(1:length(center_indices), 1)[1] # This returns a vector, so just get the Int
+        neighbor_indices = find_neighbors_within_range(cluster, center_indices[cluster_sample], radius, false)
+        if length(neighbor_indices) < resample_if_found_less_than_n_neighbors
+            # we only get here if the fragment of interest
+            # has a small number of neighbors. This probably
+            # indicates the molecule evaporated away or something
+            # like that. Just throw this away and resample.
+            
+            # TODO: Fix the fact this could technically loop infinitely
+            # by keeping track of the number of resets and quitting at a
+            # certain number.
+            @goto original_sample
+        end
+        fragmented_labels = [cluster.labels[cluster.indices[i]] for i in neighbor_indices]
+        fragmented_geom = [cluster.geom[:, cluster.indices[i]] for i in neighbor_indices]
+        
+        # Now recursively expand the cluster around any fragments
+        # from expand_sample_if_fragment_found
+        already_expanded = Int[] # stores expansion indices we already dealt with
+        @label recursively_expand
+        for i in eachindex(expand_sample_if_fragment_found)
+            maybe_label_index = findall(x -> x == expand_sample_if_fragment_found[i], fragmented_labels)
+            label_index = 0
+
+            # find the appropriate index to expand around
+            # but ensure we aren't expanding around the same index
+            # we found in the first place. i.e. the one we expanded
+            # around on previous iterations of the recusion.
+            if !isempty(maybe_label_index)
+                for i_found in eachindex(maybe_label_index)
+                    if neighbor_indices[maybe_label_index[i_found]] ∉ already_expanded
+                        haskey(fragment_charges, fragmented_labels[i_found]) ? cluster_charge += fragment_charges[fragmented_labels[i_found]] : nothing
+                        label_index = maybe_label_index[i_found]
+                    end
+                end
+            end
+            if label_index == 0
+                continue
+            end
+
+            expansion_center_index = neighbor_indices[label_index]
             push!(already_expanded, expansion_center_index)
             expanded_indices = find_neighbors_within_range(cluster, expansion_center_index, expansion_radius)
             expanded_indices = setdiff(expanded_indices, neighbor_indices)
 
-            expanded_labels   = [cluster.labels[cluster.indices[i]] for i in setdiff(expanded_indices, neighbor_indices)]
-            expanded_geom     = [cluster.geom[:, cluster.indices[i]] for i in setdiff(expanded_indices, neighbor_indices)]
+            expanded_labels = [cluster.labels[cluster.indices[i]] for i in setdiff(expanded_indices, neighbor_indices)]
+            expanded_geom = [cluster.geom[:, cluster.indices[i]] for i in setdiff(expanded_indices, neighbor_indices)]
             fragmented_labels = [fragmented_labels..., expanded_labels...]
-            fragmented_geom   = [fragmented_geom..., expanded_geom...]
-        end
-        if had_to_expand
+            fragmented_geom = [fragmented_geom..., expanded_geom...]
+            append!(neighbor_indices, expanded_indices)
+
             @goto recursively_expand
+        end
+
+        environment_labels = [cluster.labels[cluster.indices[i]] for i in setdiff(1:length(cluster.indices), neighbor_indices)]
+        environment_geom = [cluster.geom[:, cluster.indices[i]] for i in setdiff(1:length(cluster.indices), neighbor_indices)]
+        lock(lk) do
+            push!(all_sampled_labels, reduce(vcat, fragmented_labels))
+            push!(all_sampled_geoms, reduce(hcat, fragmented_geom))
+            push!(all_environment_labels, reduce(vcat, environment_labels))
+            push!(all_environment_geoms, reduce(hcat, environment_geom))
+            push!(all_sample_metadata, (i_frame, cluster_sample, cluster_charge))
+            
+            @assert length(all_sampled_labels[end]) + length(all_environment_labels[end]) == length(labels[i_frame])
         end
     end
 
-    # Get the other labels as well for the environment
-    return reduce(vcat, fragmented_labels), reduce(hcat, fragmented_geom)
+    return all_sample_metadata, all_sampled_labels, all_sampled_geoms, all_environment_labels, all_environment_geoms
+end
+
+function locate_shells_near_cluster(cluster_coords::Matrix{Float64}, shell_coords::Matrix{Float64}, cluster_charge::Int)
+    full_coords = hcat(cluster_coords, shell_coords)
+    num_cluster_atoms = size(cluster_coords, 2)
+    nl = KDTree(full_coords)
+    shell_indices_to_exclude = Int[]
+    num_iterations = 0
+    min_distance = 1.0
+    while length(shell_indices_to_exclude) != num_cluster_atoms - cluster_charge
+        indices_to_exclude = Int[]
+        for i in 1:num_cluster_atoms
+            @views append!(indices_to_exclude, inrange(nl, cluster_coords[:, i], min_distance + num_iterations * 0.05, false))
+        end
+
+        shell_indices_to_exclude   = unique(indices_to_exclude[findall(>(size(cluster_coords, 2)), indices_to_exclude)])
+        
+        num_iterations += 1
+        if num_iterations >= 10
+            break
+        end
+    end
+    #if length(shell_indices_to_exclude) != num_cluster_atoms - cluster_charge
+    #    write_xyz("failed_test.xyz", ["H" for _ in eachindex(shell_indices_to_exclude)], shell_coords[:, (shell_indices_to_exclude .- size(cluster_coords, 2))])
+    #end
+    #display(size(shell_coords, 2))
+    # minus because a negative charge means an extra shell
+    #@assert length(shell_indices_to_exclude) == num_cluster_atoms - cluster_charge string("Expected to find ", num_cluster_atoms - cluster_charge, " shells but found ", length(shell_indices_to_exclude), ". Charge: ", cluster_charge, " N: ", num_cluster_atoms)
+    #have to shift all the indices since we found them based on the combined coordinates.
+    return shell_indices_to_exclude .- size(cluster_coords, 2)
+end
+
+"""
+This is a wrapper around sample_random_clusters_within_range
+that writes out the sampled clusters and environments
+every 100 samples.
+"""
+function write_random_samples_within_range(
+    outfile_prefix::String,
+    geoms::AbstractVector{Matrix{Float64}},
+    labels::AbstractVector{Vector{String}},
+    shell_coords::AbstractVector{Matrix{Float64}},
+    chemical_formula::Vector{String},
+    radius::Float64,
+    expand_sample_if_fragment_found::Vector{Vector{String}},
+    expansion_radius::Float64,
+    number_of_clusters_to_sample::Int,
+    skip_first_n_frames::Int=0
+)
+    extra_samples = number_of_clusters_to_sample - (number_of_clusters_to_sample ÷ 100) * 100
+    # start from zero so we always enter the loop once
+    for i in 0:(number_of_clusters_to_sample ÷ 100)
+        num_samples = 100
+        if i == (number_of_clusters_to_sample ÷ 100)
+            num_samples = extra_samples
+            if extra_samples == 0
+                break
+            end
+        end
+        output = sample_random_clusters_within_range(
+            geoms,
+            labels,
+            chemical_formula,
+            radius,
+            expand_sample_if_fragment_found,
+            expansion_radius,
+            num_samples,
+            skip_first_n_frames
+        )
+
+        sampled_metadata, sampled_labels, sampled_geoms, environment_labels, environment_geoms = output
+
+        write_xyz(
+            string(outfile_prefix, ".xyz"),
+            [string(length(sampled_labels[i]), "\n", "Frame: ", sampled_metadata[i][1], " Center: ", sampled_metadata[i][2]) for i in eachindex(sampled_labels)],
+            sampled_labels,
+            sampled_geoms,
+            append=true
+        )
+
+        mkpath("env_charges")
+        for i_env in eachindex(environment_labels)
+            core_position_and_charge_matrix = vcat(environment_geoms[i_env], ones((1, length(environment_labels[i_env]))))
+            
+            shell_indices_to_exclude = locate_shells_near_cluster(sampled_geoms[i_env], shell_coords[sampled_metadata[i_env][1]], sampled_metadata[i_env][3])
+            shell_indices = setdiff(1:size(shell_coords[sampled_metadata[i_env][1]], 2), shell_indices_to_exclude)
+            shell_positions = shell_coords[sampled_metadata[i_env][1]][:, shell_indices]
+            shell_position_and_charge_matrix = vcat(shell_positions, -ones((1, length(shell_indices))))
+
+            writedlm(string("env_charges/charges_sample_", i * 100 + i_env, ".xyz"), hcat(core_position_and_charge_matrix, shell_position_and_charge_matrix)')
+        end
+
+        #write_xyz(
+        #    string(outfile_prefix, "_environment.xyz"),
+        #    [string(length(environment_labels[i]), "\n", "Frame: ", sampled_metadata[i][1], " Center: ", sampled_metadata[i][2]) for i in eachindex(environment_labels)],
+        #    environment_labels,
+        #    environment_geoms,
+        #    append=true
+        #)
+    end
+end
+
+"""
+This function assumes that you have generated cluster_samples and the
+charges which are used as the environment.
+"""
+function write_input_files_for_vie_calculations(
+    infile_prefix::String,
+    cluster_geom_file::String
+)
+    atom_charges = Dict(
+        "O"   => -2,
+        "Cl"  => -1,
+        "H"   =>  1,
+        "Na"  =>  1,
+    )
+
+    fragment_basis_sets = Dict(
+        ["O", "H"] => "aug-cc-pvtz",
+        ["O", "H", "H", "H"] => "aug-cc-pvtz",
+        ["Cl"] => "aug-cc-pvtz",
+        ["Na"] => "aug-cc-pvtz"
+    )
+    _, cluster_labels, cluster_geoms = read_xyz(cluster_geom_file)
+    
+    rem_input_string = "\$rem
+jobtype                 sp
+method                  wB97X-V
+unrestricted            1
+basis                   mixed
+xc_grid        2
+scf_max_cycles          500
+scf_convergence         6
+thresh                  14
+s2thresh 14
+symmetry                0
+sym_ignore              1
+mem_total 256000
+mem_static 16000
+\$end"
+
+    mkpath("qchem_input_files")
+    @showprogress for i in eachindex(cluster_labels)
+        cluster_charge = sum([atom_charges[label] for label in cluster_labels[i]])
+        
+        cluster = build_cluster(cluster_geoms[i], cluster_labels[i])
+        
+        # stores label, atom number, and basis set
+        all_basis_sets = Tuple{String, Int, String}[]
+        for i_frag in eachindex(cluster.indices)
+            if haskey(fragment_basis_sets, cluster.labels[cluster.indices[i_frag]])
+                for index in cluster.indices[i_frag]
+                    push!(all_basis_sets, (cluster.labels[index], index, fragment_basis_sets[cluster.labels[cluster.indices[i_frag]]]))
+                end
+            else
+                for index in cluster.indices[i_frag]
+                    push!(all_basis_sets, (cluster.labels[index], index, "6-31+G*"))
+                end
+            end
+        end
+
+        basis_string = ""
+        for i_atom in eachindex(all_basis_sets)
+            basis_string = string(basis_string, all_basis_sets[i_atom][1], " ", all_basis_sets[i_atom][2], "\n", all_basis_sets[i_atom][3], "\n****\n")
+        end
+
+        geom_string = geometry_to_string(cluster_geoms[i], cluster_labels[i])
+        open(string("qchem_input_files/", infile_prefix, "_sample_", i, ".in"), "w") do io
+            write(io, "\$molecule\n")
+            write(io, string(cluster_charge, " ", 1, "\n"))
+            write(io, geom_string)
+            write(io, "\$end\n\n")
+            write(io, rem_input_string)
+            write(io, string("\n\n\$basis\n", basis_string, "\$end\n\n"))
+            write(io, "\n\$external_charges\n")
+            writedlm(io, readdlm(string("env_charges/charges_sample_", i, ".xyz")))
+            write(io, "\$end\n\n@@@\n\n")
+            write(io, "\$molecule\n")
+            write(io, string(cluster_charge+1, " ", 2, "\n"))
+            write(io, geom_string)
+            write(io, "\$end\n\n")
+            write(io, rem_input_string)
+            write(io, string("\n\n\$basis\n", basis_string, "\$end\n\n"))
+            write(io, "\n\$external_charges\n")
+            writedlm(io, readdlm(string("env_charges/charges_sample_", i, ".xyz")))
+            write(io, "\$end\n\n")
+        end
+    end
 end

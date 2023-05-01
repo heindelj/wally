@@ -342,6 +342,30 @@ function eda_input()
 \$end\n"
 end
 
+function fda_input()
+    return "\$rem
+  JOBTYPE FORCE
+  fda true
+  gen_scfman true
+  method wB97X-V
+  BASIS def2-qzvppd
+  XC_GRID 000099000590
+  NL_GRID 1
+  UNRESTRICTED FALSE
+  MAX_SCF_CYCLES 200
+  SYMMETRY FALSE
+  SYM_IGNORE TRUE
+  mem_total  16000
+  mem_static 1000
+  scf_guess fragmo
+  BASIS_LIN_DEP_THRESH 8
+  SCFMI_MODE 0
+  THRESH 14
+  SCF_CONVERGENCE 8
+  SCF_PRINT_FRGM TRUE
+\$end\n"
+end
+
 function bonded_eda_input()
     return "
 \$rem

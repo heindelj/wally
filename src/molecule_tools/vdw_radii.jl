@@ -48,3 +48,23 @@ function vdw_radius(atom_label::String)
         )
     return vdw_radii[titlecase(atom_label)]
 end
+
+function ionic_radius(atom_label::String)
+    ionic_radii = Dict(
+        "F"  => 1.33,
+        "Cl" => 1.81,
+        "Br" => 1.96,
+        "I"  => 2.20,
+        "Li" => 0.76,
+        "Na" => 1.02,
+        "K"  => 1.38,
+        "Rb" => 1.52,
+        "Cs" => 1.67,
+        "Be" => 0.45,
+        "Mg" => 0.72
+    )
+    if haskey(ionic_radii, atom_label)
+        return ionic_radii[titlecase(atom_label)]
+    end
+    return 0.0
+end
