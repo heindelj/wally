@@ -152,9 +152,21 @@ function write_xyz(outfile::AbstractString, header::AbstractString, labels::Abst
 end
 
 function write_xyz(outfile::AbstractString, labels::AbstractVector{String}, geom::Matrix{Float64}; append::Bool=false, skip_atom_labels::Vector{String}=String[], directory::AbstractString="")
-    write_xyz(outfile, [string(length(labels), "\n")], [labels], [geom], append=append, skip_atom_labels=skip_atom_labels, directory=directory)
+    num_atoms_to_skip = 0
+    for i in eachindex(labels)
+        if labels[i] in skip_atom_labels
+            num_atoms_to_skip += 1
+        end
+    end
+    write_xyz(outfile, [string(length(labels) - num_atoms_to_skip, "\n")], [labels], [geom], append=append, skip_atom_labels=skip_atom_labels, directory=directory)
 end
 
 function write_xyz(outfile::AbstractString, labels::AbstractVector{Vector{String}}, geoms::AbstractVector{Matrix{Float64}}; append::Bool=false, skip_atom_labels::Vector{String}=String[], directory::AbstractString="")
-    write_xyz(outfile, [string(length(labels[i]), "\n") for i in eachindex(labels)], labels, geoms, append=append, skip_atom_labels=skip_atom_labels, directory=directory)
+    num_atoms_to_skip = 0
+    for i in eachindex(labels)
+        if labels[i] in skip_atom_labels
+            num_atoms_to_skip += 1
+        end
+    end
+    write_xyz(outfile, [string(length(labels[i]) - num_atoms_to_skip, "\n") for i in eachindex(labels)], labels, geoms, append=append, skip_atom_labels=skip_atom_labels, directory=directory)
 end
