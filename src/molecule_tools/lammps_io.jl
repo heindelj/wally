@@ -1,44 +1,63 @@
-include("atomic_masses.jl")
+using ProgressMeter
 
-function write_reaxff_cgem_input(ofile::String, coords::AbstractMatrix, labels::AbstractVector{String}, index_and_charge::Union{Dict{Int, Int}, Nothing}=nothing)
-    """
-    Writes a reaxff/CGEM input for the modified version of Lammps.
-    index_and_charge is a dictionary specifying which index should have an additional
-    shell placed at it. i.e. (2,-1) would put an extra electronic shell at atom 2.
-    """
-    labels_unique = unique(labels)
-    masses = atomic_masses(labels_unique)
-    
-    label_to_index = Dict{String, Int}()
-    for i in 1:length(labels_unique)
-     label_to_index[labels_unique[i]] = i
+function parse_lammps_trajectory(infile::String, type_to_label::Union{Dict{Int, String}, Nothing}=nothing)
+    coords = Matrix{Float64}[]
+    atom_types = Vector{Int}[]
+
+    lines = readlines(infile)
+    natoms = 0
+    parse_geom = false
+    @showprogress for (i, line) in enumerate(lines)
+        if occursin("ITEM: NUMBER OF ATOMS", line)
+            natoms = tryparse(Int, lines[i+1])
+            push!(atom_types, zeros(Int, natoms))
+            push!(coords, zeros(3, natoms))
+            continue
+        end
+        if occursin("ITEM: ATOMS", line)
+            parse_geom = true
+            continue
+        end
+        if parse_geom
+            for j in 1:natoms
+                split_line = split(lines[i-1+j])
+                atom_types[end][j] = parse(Int, split_line[1])
+                @views coords[end][:, j] = [parse(Float64, split_line[3]), parse(Float64, split_line[4]), parse(Float64, split_line[5])]
+            end
+            parse_geom = false
+        end
+    end
+    if type_to_label !== nothing
+        atom_labels = [[type_to_label[atom_types[i][j]] for j in eachindex(atom_types[i])] for i in eachindex(atom_types)]
+        return atom_labels, coords
+    end
+    return atom_types, coords
+end
+
+function generate_reaxff_cgem_configuration_with_shells(coords::Matrix{Float64}, labels::Vector{String}, add_extra_shell::Vector{Int}=Int[], no_shell::Vector{Int}=Int[], label_to_type::Dict{String, Int}=Dict("O"=>2, "H"=>1))
+    coords_with_shells = Vector{Float64}[]
+    charges = Int[]
+    types = Int[]
+    for i in eachindex(labels)
+        push!(coords_with_shells, coords[:,i])
+        push!(charges, 1)
+        push!(types, label_to_type[labels[i]])
+        if i in no_shell
+            continue
+        end
+        push!(coords_with_shells, coords[:,i] + randn(3) * 0.01)
+        push!(charges, -1)
+        push!(types, 3) # shell type is always 3
+        if i in add_extra_shell
+            push!(coords_with_shells, coords[:,i] + randn(3) * 0.01)
+            push!(charges, -1)
+            push!(types, 3) # shell type is always 3
+        end
     end
 
-    open(ofile, "w") do io
-     write(io, "# Comment line\n\n")
-     write(io, string(2 * length(labels) + ((index_and_charge === nothing) ? 0 : length(keys(index_and_charge))), " atoms\n"))
-     write(io, string(length(labels_unique) + 1, " atom types\n")) #+1 for the electron shell
-     write(io, "\n-250 250 xlo xhi\n")
-     write(io, "-250 250 ylo yhi\n")
-     write(io, "-250 250 zlo zhi\n")
-     write(io, "\nMasses\n\n")
-     for i in 1:length(masses)
-             write(io, string(i, " ", masses[i], "\n"))
-     end
-     write(io, string(length(masses)+1, " 0.01\n")) # electron shell
-     write(io, "\nAtoms\n\n")
-
-     # write actual atom and shell for each atom
-     count = 1
-     for (i, vec) in enumerate(eachcol(coords))
-             write(io, string(count, "   ", label_to_index[labels[i]], "  1.0 ", vec[1], " ", vec[2], " ", vec[3], "\n"))
-             count += 1
-             write(io, string(count, "   3 -1.0 ", vec[1]+0.1, " ", vec[2]+0.1, " ", vec[3]+0.1, "\n"))
-             count += 1
-             if index_and_charge !== nothing && i in keys(index_and_charge)
-                     write(io, string(count, "   3 ", Float64(get(index_and_charge, i, -1)), " ", vec[1]-0.1, " ", vec[2]-0.1, " ", vec[3]-0.1, "\n"))
-                     count += 1
-             end
-     end
+    open("cgem_initial_structure.init", "w") do io
+        for i in eachindex(types)
+            write(io, string(i, " ", types[i], " ", charges[i], " ", coords_with_shells[i][1], " ", coords_with_shells[i][2], " ", coords_with_shells[i][3], "\n"))
+        end
     end
 end

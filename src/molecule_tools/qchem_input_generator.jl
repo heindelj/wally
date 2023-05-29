@@ -337,7 +337,7 @@ function eda_input()
   mem_total  16000
   BASIS_LIN_DEP_THRESH 8
   THRESH 14
-  SCF_CONVERGENCE 8
+  SCF_CONVERGENCE 7
   SCF_PRINT_FRGM TRUE
 \$end\n"
 end
@@ -361,9 +361,29 @@ function fda_input()
   BASIS_LIN_DEP_THRESH 8
   SCFMI_MODE 0
   THRESH 14
-  SCF_CONVERGENCE 8
+  SCF_CONVERGENCE 7
   SCF_PRINT_FRGM TRUE
 \$end\n"
+end
+
+function polarizability_input()
+return "\$rem
+JOBTYPE       polarizability
+method        wB97X-V
+BASIS         def2-qzvppd
+XC_GRID       000099000590
+NL_GRID       1
+UNRESTRICTED     false
+GEN_SCFMAN       TRUE
+MAX_SCF_CYCLES      200
+SYMMETRY      FALSE
+SYM_IGNORE    TRUE
+MEM_TOTAL     16000
+BASIS_LIN_DEP_THRESH     10
+THRESH        14
+SCF_CONVERGENCE          8
+RESPONSE_POLAR -1
+\$end"
 end
 
 function bonded_eda_input()

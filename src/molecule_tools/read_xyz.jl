@@ -62,9 +62,9 @@ function read_xyz(ifile::String; T::Type=Float64, static::Bool=false, start_at_N
             if length(header) == load_N_frames
                 break
             end
-            if (length(header) % 500) == 0 && length(header) > 1
-                println(string("Finished reading ", length(header), " structures."))
-            end
+            #if (length(header) % 500) == 0 && length(header) > 1
+            #    println(string("Finished reading ", length(header), " structures."))
+            #end
         end
     end
 
@@ -113,7 +113,7 @@ function read_fragmented_xyz(ifile::String; T::Type=Float64)
     return repeat(header, length(atom_labels)), atom_labels, geoms
 end
 
-function write_xyz(outfile::AbstractString, header::AbstractArray, labels::AbstractArray, geoms::AbstractArray; append::Bool=false, directory::AbstractString="")
+function write_xyz(outfile::AbstractString, header::AbstractArray, labels::AbstractArray, geoms::AbstractArray; append::Bool=false, skip_atom_labels::Vector{String}=String[], directory::AbstractString="")
     """
     Writes an xyz file with the elements returned by read_xyz.
     """
@@ -139,20 +139,22 @@ function write_xyz(outfile::AbstractString, header::AbstractArray, labels::Abstr
         for (i_geom, head) in enumerate(header)
             write(io, string(head, "\n"))
             for (i_coord, atom_label) in enumerate(labels[i_geom])
-                write(io, string(atom_label, " ", join(string.(geoms[i_geom][:,i_coord]), " "), "\n"))
+                if atom_label ∉ skip_atom_labels
+                    write(io, string(atom_label, " ", join(string.(geoms[i_geom][:,i_coord]), " "), "\n"))
+                end
             end
         end
     end
 end
 
-function write_xyz(outfile::AbstractString, header::AbstractString, labels::AbstractVector{String}, geoms::AbstractVector{Matrix{Float64}}; append::Bool=false, directory::AbstractString="")
-    write_xyz(outfile, [header for _ in eachindex(geoms)], [labels for _ in eachindex(geoms)], geoms, append=append, directory=directory)
+function write_xyz(outfile::AbstractString, header::AbstractString, labels::AbstractVector{String}, geoms::AbstractVector{Matrix{Float64}}; append::Bool=false, skip_atom_labels::Vector{String}=String[], directory::AbstractString="")
+    write_xyz(outfile, [header for _ in eachindex(geoms)], [labels for _ in eachindex(geoms)], geoms, append=append, skip_atom_labels=skip_atom_labels, directory=directory)
 end
 
-function write_xyz(outfile::AbstractString, labels::AbstractVector{String}, geom::Matrix{Float64}; append::Bool=false, directory::AbstractString="")
-    write_xyz(outfile, [string(length(labels), "\n")], [labels], [geom], append=append, directory=directory)
+function write_xyz(outfile::AbstractString, labels::AbstractVector{String}, geom::Matrix{Float64}; append::Bool=false, skip_atom_labels::Vector{String}=String[], directory::AbstractString="")
+    write_xyz(outfile, [string(length(labels), "\n")], [labels], [geom], append=append, skip_atom_labels=skip_atom_labels, directory=directory)
 end
 
-function write_xyz(outfile::AbstractString, labels::AbstractVector{Vector{String}}, geoms::AbstractVector{Matrix{Float64}}; append::Bool=false, directory::AbstractString="")
-    write_xyz(outfile, [string(length(labels[i]), "\n") for i in eachindex(labels)], labels, geoms, append=append, directory=directory)
+function write_xyz(outfile::AbstractString, labels::AbstractVector{Vector{String}}, geoms::AbstractVector{Matrix{Float64}}; append::Bool=false, skip_atom_labels::Vector{String}=String[], directory::AbstractString="")
+    write_xyz(outfile, [string(length(labels[i]), "\n") for i in eachindex(labels)], labels, geoms, append=append, skip_atom_labels=skip_atom_labels, directory=directory)
 end
