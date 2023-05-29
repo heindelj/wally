@@ -163,8 +163,8 @@ end
 
 function write_xyz(outfile::AbstractString, labels::AbstractVector{Vector{String}}, geoms::AbstractVector{Matrix{Float64}}; append::Bool=false, skip_atom_labels::Vector{String}=String[], directory::AbstractString="")
     num_atoms_to_skip = 0
-    for i in eachindex(labels)
-        if labels[i] in skip_atom_labels
+    for i in eachindex(labels[1])
+        if labels[1][i] in skip_atom_labels
             num_atoms_to_skip += 1
         end
     end
