@@ -213,7 +213,7 @@ function sample_random_clusters_within_range(
     resample_if_found_less_than_n_neighbors::Int=5
 )
     num_frames = length(geoms)
-    @assert skip_first_n_frames < length(length(geoms)) "You requested we skip $skip_first_n_frames but there are only $num_frames frames."
+    @assert skip_first_n_frames < num_frames "You requested we skip $skip_first_n_frames but there are only $num_frames frames."
 
     fragment_charges = Dict(
         ["O", "H"] => -1,
