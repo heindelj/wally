@@ -28,6 +28,7 @@ function parse_lammps_trajectory(infile::String, type_to_label::Union{Dict{Int, 
                     pop!(atom_types)
                     pop!(coords)
                     parse_geom = false
+                    @goto skip_frame
                 end
                 atom_type = tryparse(Int, split_line[1])
                 new_coords = [tryparse(Float64, split_line[3]), tryparse(Float64, split_line[4]), tryparse(Float64, split_line[5])]
