@@ -8,6 +8,7 @@ function parse_lammps_trajectory(infile::String, type_to_label::Union{Dict{Int, 
     natoms = 0
     parse_geom = false
     @showprogress for (i, line) in enumerate(lines)
+        @label skip_frame
         if occursin("ITEM: NUMBER OF ATOMS", line)
             natoms = tryparse(Int, lines[i+1])
             push!(atom_types, zeros(Int, natoms))
@@ -21,8 +22,27 @@ function parse_lammps_trajectory(infile::String, type_to_label::Union{Dict{Int, 
         if parse_geom
             for j in 1:natoms
                 split_line = split(lines[i-1+j])
-                atom_types[end][j] = parse(Int, split_line[1])
-                @views coords[end][:, j] = [parse(Float64, split_line[3]), parse(Float64, split_line[4]), parse(Float64, split_line[5])]
+                atom_type = tryparse(Int, split_line[1])
+                new_coords = [tryparse(Float64, split_line[3]), tryparse(Float64, split_line[4]), tryparse(Float64, split_line[5])]
+                if atom_type !== nothing
+                    atom_types[end][j] = atom_type
+                else
+                    @warn "Failed to parse a frame in lammps file. Skipping and moving to next frame."
+                    pop!(atom_types)
+                    pop!(coords)
+                    parse_geom = false
+                    @goto skip_frame
+                end
+                if !any(==(true), isnothing.(new_coords))
+                    @views coords[end][:, j] = new_coords
+                else
+                    @warn "Failed to parse a frame in lammps file. Skipping and moving to next frame."
+                    pop!(atom_types)
+                    pop!(coords)
+                    parse_geom = false
+                    @goto skip_frame
+                end
+
             end
             parse_geom = false
         end
