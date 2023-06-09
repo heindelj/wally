@@ -409,11 +409,66 @@ function write_random_samples_within_range(
     end
 end
 
+function write_input_files_for_vie_calculations(
+    infile_prefix::String,
+    cluster_geom_file::String
+)
+    atom_charges = Dict(
+        "O"   => -2,
+        "Cl"  => -1,
+        "H"   =>  1,
+        "Na"  =>  1,
+    )
+
+    _, cluster_labels, cluster_geoms = read_xyz(cluster_geom_file)
+    
+    rem_input_string = "\$rem
+jobtype                 sp
+method                  wB97M-V
+unrestricted            1
+basis                   aug-cc-pVDZ
+xc_grid        2
+scf_max_cycles          500
+scf_convergence         6
+thresh                  14
+s2thresh 14
+symmetry                0
+sym_ignore              1
+mem_total 256000
+mem_static 16000
+\$end"
+
+    mkpath("qchem_input_files")
+    @showprogress for i in eachindex(cluster_labels)
+        cluster_charge = sum([atom_charges[label] for label in cluster_labels[i]])
+
+        geom_string = geometry_to_string(cluster_geoms[i], cluster_labels[i])
+        open(string("qchem_input_files/", infile_prefix, "_sample_", i, ".in"), "w") do io
+            write(io, "\$molecule\n")
+            write(io, string(cluster_charge, " ", 1, "\n"))
+            write(io, geom_string)
+            write(io, "\$end\n\n")
+            write(io, rem_input_string)
+            write(io, "\n\$external_charges\n")
+            writedlm(io, readdlm(string("env_charges/charges_sample_", i, ".xyz")))
+            write(io, "\$end\n\n@@@\n\n")
+            write(io, "\$molecule\n")
+            write(io, string(cluster_charge+1, " ", 2, "\n"))
+            write(io, geom_string)
+            write(io, "\$end\n\n")
+            write(io, rem_input_string)
+            write(io, "\n\$external_charges\n")
+            writedlm(io, readdlm(string("env_charges/charges_sample_", i, ".xyz")))
+            write(io, "\$end\n\n")
+        end
+    end
+end
+
 """
 This function assumes that you have generated cluster_samples and the
 charges which are used as the environment.
 """
-function write_input_files_for_vie_calculations(
+function write_mixed_basis_input_files_for_vie_calculations(
     infile_prefix::String,
     cluster_geom_file::String
 )
