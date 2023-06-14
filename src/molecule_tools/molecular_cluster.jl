@@ -487,14 +487,31 @@ function write_mixed_basis_input_files_for_vie_calculations(
     )
     _, cluster_labels, cluster_geoms = read_xyz(cluster_geom_file)
     
-    rem_input_string = "\$rem
+    rem_input_string_gas_phase = "\$rem
 jobtype                 sp
-method                  wB97X-V
+method                  wB97M-V
 unrestricted            1
 basis                   mixed
 xc_grid        2
 scf_max_cycles          500
 scf_convergence         6
+thresh                  14
+s2thresh 14
+symmetry                0
+sym_ignore              1
+mem_total 256000
+mem_static 16000
+\$end"
+
+    rem_input_string_with_env = "\$rem
+jobtype                 sp
+method                  wB97M-V
+unrestricted            1
+basis                   mixed
+xc_grid        2
+scf_max_cycles          500
+scf_convergence         6
+SCF_GUESS               read
 thresh                  14
 s2thresh 14
 symmetry                0
@@ -518,7 +535,7 @@ mem_static 16000
                 end
             else
                 for index in cluster.indices[i_frag]
-                    push!(all_basis_sets, (cluster.labels[index], index, "6-31+G*"))
+                    push!(all_basis_sets, (cluster.labels[index], index, "aug-cc-pvdz"))
                 end
             end
         end
@@ -529,21 +546,38 @@ mem_static 16000
         end
 
         geom_string = geometry_to_string(cluster_geoms[i], cluster_labels[i])
-        open(string("qchem_input_files/", infile_prefix, "_sample_", i, ".in"), "w") do io
+        # write anion file
+        open(string("qchem_input_files/", infile_prefix, "_anion_sample_", i, ".in"), "w") do io
             write(io, "\$molecule\n")
             write(io, string(cluster_charge, " ", 1, "\n"))
             write(io, geom_string)
             write(io, "\$end\n\n")
-            write(io, rem_input_string)
+            write(io, rem_input_string_gas_phase)
+            write(io, string("\n\n\$basis\n", basis_string, "\$end\n\n@@@\n\n"))
+            write(io, "\$molecule\n")
+            write(io, string(cluster_charge, " ", 1, "\n"))
+            write(io, geom_string)
+            write(io, "\$end\n\n")
+            write(io, rem_input_string_with_env)
             write(io, string("\n\n\$basis\n", basis_string, "\$end\n\n"))
             write(io, "\n\$external_charges\n")
             writedlm(io, readdlm(string("env_charges/charges_sample_", i, ".xyz")))
-            write(io, "\$end\n\n@@@\n\n")
+            write(io, "\$end\n\n")
+        end
+
+        # write radical file
+        open(string("qchem_input_files/", infile_prefix, "_radical_sample_", i, ".in"), "w") do io
             write(io, "\$molecule\n")
             write(io, string(cluster_charge+1, " ", 2, "\n"))
             write(io, geom_string)
             write(io, "\$end\n\n")
-            write(io, rem_input_string)
+            write(io, rem_input_string_gas_phase)
+            write(io, string("\n\n\$basis\n", basis_string, "\$end\n\n@@@\n\n"))
+            write(io, "\$molecule\n")
+            write(io, string(cluster_charge+1, " ", 2, "\n"))
+            write(io, geom_string)
+            write(io, "\$end\n\n")
+            write(io, rem_input_string_with_env)
             write(io, string("\n\n\$basis\n", basis_string, "\$end\n\n"))
             write(io, "\n\$external_charges\n")
             writedlm(io, readdlm(string("env_charges/charges_sample_", i, ".xyz")))
