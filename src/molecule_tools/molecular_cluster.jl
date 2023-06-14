@@ -379,6 +379,13 @@ function write_random_samples_within_range(
 
         sampled_metadata, sampled_labels, sampled_geoms, environment_labels, environment_geoms = output
 
+        # sort the sampled cluster so that hydroxide is at the top #
+        for i in eachindex(sampled_geoms)
+            sorted_labels, sorted_coords = sort_water_cluster(sampled_geoms[i], sampled_labels[i])
+            sampled_labels[i] = sorted_labels
+            sampled_geoms[i] = sorted_coords
+        end
+
         write_xyz(
             string(outfile_prefix, ".xyz"),
             [string(length(sampled_labels[i]), "\n", "Frame: ", sampled_metadata[i][1], " Center: ", sampled_metadata[i][2]) for i in eachindex(sampled_labels)],
@@ -387,25 +394,32 @@ function write_random_samples_within_range(
             append=true
         )
 
-        mkpath("env_charges")
-        for i_env in eachindex(environment_labels)
-            core_position_and_charge_matrix = vcat(environment_geoms[i_env], ones((1, length(environment_labels[i_env]))))
-            
-            shell_indices_to_exclude = locate_shells_near_cluster(sampled_geoms[i_env], shell_coords[sampled_metadata[i_env][1]], sampled_metadata[i_env][3])
-            shell_indices = setdiff(1:size(shell_coords[sampled_metadata[i_env][1]], 2), shell_indices_to_exclude)
-            shell_positions = shell_coords[sampled_metadata[i_env][1]][:, shell_indices]
-            shell_position_and_charge_matrix = vcat(shell_positions, -ones((1, length(shell_indices))))
+        #mkpath("env_charges")
+        #for i_env in eachindex(environment_labels)
+        #    core_position_and_charge_matrix = vcat(environment_geoms[i_env], ones((1, length(environment_labels[i_env]))))
+        #    
+        #    shell_indices_to_exclude = locate_shells_near_cluster(sampled_geoms[i_env], shell_coords[sampled_metadata[i_env][1]], sampled_metadata[i_env][3])
+        #    shell_indices = setdiff(1:size(shell_coords[sampled_metadata[i_env][1]], 2), shell_indices_to_exclude)
+        #    shell_positions = shell_coords[sampled_metadata[i_env][1]][:, shell_indices]
+        #    shell_position_and_charge_matrix = vcat(shell_positions, -ones((1, length(shell_indices))))
+        #
+        #    writedlm(string("env_charges/charges_sample_", i * 100 + i_env, ".xyz"), hcat(core_position_and_charge_matrix, shell_position_and_charge_matrix)')
+        #end
 
-            writedlm(string("env_charges/charges_sample_", i * 100 + i_env, ".xyz"), hcat(core_position_and_charge_matrix, shell_position_and_charge_matrix)')
+        # sort the sampled environment so that hydroxide is at the top #
+        for i in eachindex(environment_geoms)
+            sorted_labels, sorted_coords = sort_water_cluster(environment_geoms[i], environment_labels[i])
+            environment_labels[i] = sorted_labels
+            environment_geoms[i] = sorted_coords
         end
 
-        #write_xyz(
-        #    string(outfile_prefix, "_environment.xyz"),
-        #    [string(length(environment_labels[i]), "\n", "Frame: ", sampled_metadata[i][1], " Center: ", sampled_metadata[i][2]) for i in eachindex(environment_labels)],
-        #    environment_labels,
-        #    environment_geoms,
-        #    append=true
-        #)
+        write_xyz(
+            string(outfile_prefix, "_environment.xyz"),
+            [string(length(environment_labels[i]), "\n", "Frame: ", sampled_metadata[i][1], " Center: ", sampled_metadata[i][2]) for i in eachindex(environment_labels)],
+            environment_labels,
+            environment_geoms,
+            append=true
+        )
     end
 end
 
