@@ -394,17 +394,83 @@ function write_random_samples_within_range(
             append=true
         )
 
-        #mkpath("env_charges")
-        #for i_env in eachindex(environment_labels)
-        #    core_position_and_charge_matrix = vcat(environment_geoms[i_env], ones((1, length(environment_labels[i_env]))))
-        #    
-        #    shell_indices_to_exclude = locate_shells_near_cluster(sampled_geoms[i_env], shell_coords[sampled_metadata[i_env][1]], sampled_metadata[i_env][3])
-        #    shell_indices = setdiff(1:size(shell_coords[sampled_metadata[i_env][1]], 2), shell_indices_to_exclude)
-        #    shell_positions = shell_coords[sampled_metadata[i_env][1]][:, shell_indices]
-        #    shell_position_and_charge_matrix = vcat(shell_positions, -ones((1, length(shell_indices))))
-        #
-        #    writedlm(string("env_charges/charges_sample_", i * 100 + i_env, ".xyz"), hcat(core_position_and_charge_matrix, shell_position_and_charge_matrix)')
-        #end
+        mkpath("env_charges")
+        for i_env in eachindex(environment_labels)
+            core_position_and_charge_matrix = vcat(environment_geoms[i_env], ones((1, length(environment_labels[i_env]))))
+            
+            shell_indices_to_exclude = locate_shells_near_cluster(sampled_geoms[i_env], shell_coords[sampled_metadata[i_env][1]], sampled_metadata[i_env][3])
+            shell_indices = setdiff(1:size(shell_coords[sampled_metadata[i_env][1]], 2), shell_indices_to_exclude)
+            shell_positions = shell_coords[sampled_metadata[i_env][1]][:, shell_indices]
+            shell_position_and_charge_matrix = vcat(shell_positions, -ones((1, length(shell_indices))))
+        
+            writedlm(string("env_charges/charges_sample_", i * 100 + i_env, ".xyz"), hcat(core_position_and_charge_matrix, shell_position_and_charge_matrix)')
+        end
+
+        # sort the sampled environment so that hydroxide is at the top #
+        for i in eachindex(environment_geoms)
+            sorted_labels, sorted_coords = sort_water_cluster(environment_geoms[i], environment_labels[i])
+            environment_labels[i] = sorted_labels
+            environment_geoms[i] = sorted_coords
+        end
+
+        write_xyz(
+            string(outfile_prefix, "_environment.xyz"),
+            [string(length(environment_labels[i]), "\n", "Frame: ", sampled_metadata[i][1], " Center: ", sampled_metadata[i][2]) for i in eachindex(environment_labels)],
+            environment_labels,
+            environment_geoms,
+            append=true
+        )
+    end
+end
+
+function write_random_samples_within_range(
+    outfile_prefix::String,
+    geoms::AbstractVector{Matrix{Float64}},
+    labels::AbstractVector{Vector{String}},
+    chemical_formula::Vector{String},
+    radius::Float64,
+    expand_sample_if_fragment_found::Vector{Vector{String}},
+    expansion_radius::Float64,
+    number_of_clusters_to_sample::Int,
+    skip_first_n_frames::Int=0
+)
+    extra_samples = number_of_clusters_to_sample - (number_of_clusters_to_sample ÷ 100) * 100
+    # start from zero so we always enter the loop once
+    for i in 0:(number_of_clusters_to_sample ÷ 100)
+        num_samples = 100
+        if i == (number_of_clusters_to_sample ÷ 100)
+            num_samples = extra_samples
+            if extra_samples == 0
+                break
+            end
+        end
+        output = sample_random_clusters_within_range(
+            geoms,
+            labels,
+            chemical_formula,
+            radius,
+            expand_sample_if_fragment_found,
+            expansion_radius,
+            num_samples,
+            skip_first_n_frames
+        )
+
+        sampled_metadata, sampled_labels, sampled_geoms, environment_labels, environment_geoms = output
+
+        # sort the sampled cluster so that hydroxide is at the top #
+        for i in eachindex(sampled_geoms)
+            sorted_labels, sorted_coords = sort_water_cluster(sampled_geoms[i], sampled_labels[i])
+            sampled_labels[i] = sorted_labels
+            sampled_geoms[i] = sorted_coords
+        end
+
+        write_xyz(
+            string(outfile_prefix, ".xyz"),
+            [string(length(sampled_labels[i]), "\n", "Frame: ", sampled_metadata[i][1], " Center: ", sampled_metadata[i][2]) for i in eachindex(sampled_labels)],
+            sampled_labels,
+            sampled_geoms,
+            append=true
+        )
 
         # sort the sampled environment so that hydroxide is at the top #
         for i in eachindex(environment_geoms)
