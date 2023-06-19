@@ -1,4 +1,4 @@
-using HybridArrays, StaticArrays
+using StaticArrays
 
 function read_xyz(ifile::String; T::Type=Float64, static::Bool=false, start_at_N::Int=1, load_N_frames::Int=typemax(Int))
     """
@@ -11,7 +11,7 @@ function read_xyz(ifile::String; T::Type=Float64, static::Bool=false, start_at_N
     header = Vector{String}()
     atom_labels = Vector{Vector{String}}()
     if static
-        geoms = Vector{HybridArray{Tuple{3,StaticArrays.Dynamic()}}}()
+        geoms = Vector{Vector{MVector{3, T}}}()
     else
         geoms = Vector{Matrix{T}}()
     end
@@ -29,7 +29,11 @@ function read_xyz(ifile::String; T::Type=Float64, static::Bool=false, start_at_N
 					head = string(line, "\n", readline(io))
 					# loop through the geometry storing the vectors and atom labels as you go
 					new_data = fill(Vector{SubString{String}}(), N)
-					geom = zeros((3,N))
+                    if static
+                        geom = [@MVector zeros(3) for _ in 1:N]
+                    else
+                        geom = zeros((3,N))
+                    end
 					labels = fill("", N)
 
 					for j = 1:N
@@ -38,9 +42,15 @@ function read_xyz(ifile::String; T::Type=Float64, static::Bool=false, start_at_N
 					for j = 1:N
 						try
 							labels[j] = new_data[j][1]
-							geom[1,j] = parse(T, new_data[j][2])
-							geom[2,j] = parse(T, new_data[j][3])
-							geom[3,j] = parse(T, new_data[j][4])
+                            if static
+                                geom[j][1] = parse(T, new_data[j][2])
+                                geom[j][2] = parse(T, new_data[j][3])
+                                geom[j][3] = parse(T, new_data[j][4])
+                            else
+                                geom[1, j] = parse(T, new_data[j][2])
+                                geom[2, j] = parse(T, new_data[j][3])
+                                geom[3, j] = parse(T, new_data[j][4])
+                            end
 						catch
 							@warn "Failed to parse on frame " i_frame j new_data[j] "Skipping this frame and moving on."
 							successfully_parsed = false

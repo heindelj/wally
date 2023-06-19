@@ -175,7 +175,7 @@ function get_cavity_dielectric_function(coords::Matrix{Float64}, labels::Vector{
     # The grid is constrained such that each dimension has an odd number of points
     # and Nx-1, Ny-1, and Nz-1 are divisible by 8.
     # We find a grid spacing similar to the requested grid spacing which
-    # satisfies those constraints 
+    # satisfies those constraints
     num_grid_points = 65
     while grid_length / num_grid_points > grid_spacing
         num_grid_points += 8

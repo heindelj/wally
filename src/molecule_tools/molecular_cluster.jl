@@ -108,17 +108,32 @@ The center_indices are the indices for the cluster, not the geometry
 from which the cluster is derived. So, the easiest way to get these
 indices is by looking up based on the molecular formula.
 """
-function find_n_nearest_neighbors(cluster::Cluster, center_indices::Vector{Int}, n::Int, sortres::Bool=true)
+function find_n_nearest_neighbors(cluster::Cluster, center_index::Int, n::Int, sortres::Bool=true)
     nl = KDTree(cluster.centers)
-    neighbor_indices, _ = knn(nl, cluster.centers[center_indices], n + 1, sortres) # the self of something is counted as a neighbor so add one to number requested
-    labels_out = Vector{Vector{String}}()
-    geoms_out = Vector{Matrix{Float64}}()
-    for i in 1:length(neighbor_indices)
+    neighbor_indices, _ = knn(nl, cluster.centers[center_index], n + 1, sortres) # the self of something is counted as a neighbor so add one to number requested
+    labels_out = Vector{String}[]
+    labels_env = Vector{String}[]
+    geoms_out = Vector{Float64}[]
+    geoms_env = Vector{Float64}[]
+    env_indices = setdiff([1:length(cluster.centers)...], neighbor_indices)
+    for i in eachindex(neighbor_indices)
         total_indices = reduce(vcat, cluster.indices[neighbor_indices[i]])
         push!(labels_out, cluster.labels[total_indices])
-        push!(geoms_out, cluster.geom[:, total_indices])
+        for vec in eachcol(cluster.geom[:, total_indices])
+            push!(geoms_out, vec[:])
+        end
     end
-    return labels_out, geoms_out
+    if !isempty(env_indices)
+        for i in eachindex(env_indices)
+            total_indices = reduce(vcat, cluster.indices[env_indices[i]])
+            push!(labels_env, cluster.labels[total_indices])
+            for vec in eachcol(cluster.geom[:, total_indices])
+                push!(geoms_env, vec[:])
+            end
+        end
+        return reduce(vcat, labels_out), reduce(hcat, geoms_out), reduce(vcat, labels_env), reduce(hcat, geoms_env)
+    end
+    return reduce(vcat, labels_out), reduce(hcat, geoms_out), String[], Array{Float64}(undef, 3, 0)
 end
 
 """
@@ -146,9 +161,17 @@ function molecules_by_formula(cluster::Cluster, chemical_formula::Vector{String}
     return indices_out
 end
 
-function find_n_nearest_neighbors(cluster::Cluster, chemical_formula::Vector{String}, n::Int, sortres::Bool=true)
+"""
+Finds n nearest neighbors to a molecule by formula. If multiple fragments with that formula are found,
+then the one specified by center_index is chosen. Otherwise, just uses the first one.
+Returns both the cluster geometry/labels and the environment geometry/labels.
+"""
+function find_n_nearest_neighbors(cluster::Cluster, chemical_formula::Vector{String}, n::Int, center_index::Int=1, sortres::Bool=true)
     molecule_indices = molecules_by_formula(cluster, chemical_formula)
-    return find_n_nearest_neighbors(cluster, molecule_indices, n, sortres)
+    if n >= length(cluster.centers)
+        n = length(cluster.centers)-1
+    end
+    return find_n_nearest_neighbors(cluster, molecule_indices[center_index], n, sortres)
 end
 
 function write_n_nearest_neighbors(geoms::AbstractVector{Matrix{Float64}}, labels::AbstractVector{Vector{String}}, chemical_formula::Vector{String}, n::Int, file_name::String="subclusters.xyz")
