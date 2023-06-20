@@ -15,7 +15,7 @@ from cgem.attypes import classify_carbon
 from cgem.parameters import get_drug_parameters
 from cgem.molecules import add_shell_in_place
 import numpy as np
-import sys
+import sys, os
 
 def write_charges(coords_cores, coords_shells, ofile=None):
     output = \"\"
@@ -40,7 +40,7 @@ def nums_to_labels(nums):
 
 if __name__ == \'__main__\':
     try:
-        cluster_file, env_file, sample_index = sys.argv[1], sys.argv[2], sys.argv[3]
+        cluster_file, env_file = sys.argv[1], sys.argv[2]
     except:
         print(\"Expected cluster xyz file followed by environment xyz file followed by index for writing output charges.\")
         sys.exit(1)
@@ -52,10 +52,10 @@ if __name__ == \'__main__\':
     coords_s = np.copy(all_coords)
     drug_params = get_drug_parameters()
     cgem = CGem.from_molecule(all_nums, all_coords, coords_s=coords_s, opt_shells=True, **drug_params)
-    write_charges(cgem.coords_c[len(cluster_coords):,:], cgem.coords_s[len(cluster_coords):,:], \"shell_positions_radical_optimized_\" + str(sample_index) + \".txt\")
+    write_charges(cgem.coords_c[len(cluster_coords):,:], cgem.coords_s[len(cluster_coords):,:], os.path.splitext(cluster_file)[0] + \"_shell_positions_radical.txt\")
     coords_s = add_shell_in_place(cgem.coords_s, 0)
     cgem = CGem.from_molecule(all_nums, all_coords, coords_s=coords_s, opt_shells=True, **drug_params)
-    write_charges(cgem.coords_c[len(cluster_coords):,:], cgem.coords_s[(len(cluster_coords)+1):,:], \"shell_positions_anion_optimized_\" + str(sample_index) + \".txt\")\n"
+    write_charges(cgem.coords_c[len(cluster_coords):,:], cgem.coords_s[(len(cluster_coords)+1):,:], os.path.splitext(cluster_file)[0] + \"_shell_positions_anion.txt\")"
 end
 
 function set_up_shell_position_optimization_for_sampled_clusters_and_environments(
@@ -83,69 +83,14 @@ function set_up_shell_position_optimization_for_sampled_clusters_and_environment
     end
 end
 
-
-function write_input_files_for_vie_calculations_qchem(
-    infile_prefix::String,
-    cluster_geom_file::String
-)
-    atom_charges = Dict(
-        "O"   => -2,
-        "Cl"  => -1,
-        "H"   =>  1,
-        "Na"  =>  1,
-    )
-
-    _, cluster_labels, cluster_geoms = read_xyz(cluster_geom_file)
-    
-    rem_input_string = "\$rem
-jobtype                 sp
-method                  wB97M-V
-unrestricted            1
-basis                   aug-cc-pVDZ
-xc_grid        2
-scf_max_cycles          500
-scf_convergence         6
-thresh                  14
-s2thresh 14
-symmetry                0
-sym_ignore              1
-mem_total 256000
-mem_static 16000
-\$end"
-
-    mkpath("qchem_input_files")
-    @showprogress for i in eachindex(cluster_labels)
-        cluster_charge = sum([atom_charges[label] for label in cluster_labels[i]])
-
-        geom_string = geometry_to_string(cluster_geoms[i], cluster_labels[i])
-        open(string("qchem_input_files/", infile_prefix, "_sample_", i, ".in"), "w") do io
-            write(io, "\$molecule\n")
-            write(io, string(cluster_charge, " ", 1, "\n"))
-            write(io, geom_string)
-            write(io, "\$end\n\n")
-            write(io, rem_input_string)
-            write(io, "\n\$external_charges\n")
-            writedlm(io, readdlm(string("env_charges/charges_sample_", i, ".xyz")))
-            write(io, "\$end\n\n@@@\n\n")
-            write(io, "\$molecule\n")
-            write(io, string(cluster_charge+1, " ", 2, "\n"))
-            write(io, geom_string)
-            write(io, "\$end\n\n")
-            write(io, rem_input_string)
-            write(io, "\n\$external_charges\n")
-            writedlm(io, readdlm(string("env_charges/charges_sample_", i, ".xyz")))
-            write(io, "\$end\n\n")
-        end
-    end
-end
-
 """
 This function assumes that you have generated cluster_samples and the
-charges which are used as the environment.
+charges which are used as the environment. All geometries and charges are
+read from ./sampled_geoms_and_optimized_shells/
 """
-function write_mixed_basis_input_files_for_vie_calculations_qchem(
-    infile_prefix::String,
-    cluster_geom_file::String
+function write_input_files_for_vie_qchem(
+    qchem_infile_prefix::String,
+    num_samples::Int
 )
     atom_charges = Dict(
         "O"   => -2,
@@ -160,7 +105,6 @@ function write_mixed_basis_input_files_for_vie_calculations_qchem(
         ["Cl"] => "aug-cc-pvtz",
         ["Na"] => "aug-cc-pvtz"
     )
-    _, cluster_labels, cluster_geoms = read_xyz(cluster_geom_file)
     
     rem_input_string_gas_phase = "\$rem
 jobtype                 sp
@@ -196,10 +140,12 @@ mem_static 16000
 \$end"
 
     mkpath("qchem_input_files")
-    @showprogress for i in eachindex(cluster_labels)
-        cluster_charge = sum([atom_charges[label] for label in cluster_labels[i]])
+    @showprogress for i_sample in 1:num_samples
+        _, cluster_labels, cluster_geom = read_xyz(string("sampled_geoms_and_optimized_shells/cluster_sample_", i_sample, ".xyz"))
+
+        cluster_charge = sum([atom_charges[label] for label in cluster_labels[1]])
         
-        cluster = build_cluster(cluster_geoms[i], cluster_labels[i])
+        cluster = build_cluster(cluster_geom[1], cluster_labels[1])
         
         # stores label, atom number, and basis set
         all_basis_sets = Tuple{String, Int, String}[]
@@ -220,9 +166,9 @@ mem_static 16000
             basis_string = string(basis_string, all_basis_sets[i_atom][1], " ", all_basis_sets[i_atom][2], "\n", all_basis_sets[i_atom][3], "\n****\n")
         end
 
-        geom_string = geometry_to_string(cluster_geoms[i], cluster_labels[i])
+        geom_string = geometry_to_string(cluster_geom[1], cluster_labels[1])
         # write anion file
-        open(string("qchem_input_files/", infile_prefix, "_anion_sample_", i, ".in"), "w") do io
+        open(string("qchem_input_files/", qchem_infile_prefix, "_anion_sample_", i_sample, ".in"), "w") do io
             write(io, "\$molecule\n")
             write(io, string(cluster_charge, " ", 1, "\n"))
             write(io, geom_string)
@@ -236,12 +182,12 @@ mem_static 16000
             write(io, rem_input_string_with_env)
             write(io, string("\n\n\$basis\n", basis_string, "\$end\n\n"))
             write(io, "\n\$external_charges\n")
-            writedlm(io, readdlm(string("env_charges/charges_sample_", i, ".xyz")))
+            writedlm(io, readdlm(string("sampled_geoms_and_optimized_shells/cluster_sample_", i_sample, "_shell_positions_anion.txt")))
             write(io, "\$end\n\n")
         end
 
         # write radical file
-        open(string("qchem_input_files/", infile_prefix, "_radical_sample_", i, ".in"), "w") do io
+        open(string("qchem_input_files/", qchem_infile_prefix, "_radical_sample_", i_sample, ".in"), "w") do io
             write(io, "\$molecule\n")
             write(io, string(cluster_charge+1, " ", 2, "\n"))
             write(io, geom_string)
@@ -255,8 +201,149 @@ mem_static 16000
             write(io, rem_input_string_with_env)
             write(io, string("\n\n\$basis\n", basis_string, "\$end\n\n"))
             write(io, "\n\$external_charges\n")
-            writedlm(io, readdlm(string("env_charges/charges_sample_", i, ".xyz")))
+            writedlm(io, readdlm(string("sampled_geoms_and_optimized_shells/cluster_sample_", i_sample, "_shell_positions_radical.txt")))
             write(io, "\$end\n\n")
+        end
+    end
+end
+
+function write_input_files_for_vie_nwchem(
+    nwchem_infile_prefix::String,
+    num_samples::Int
+)
+    atom_charges = Dict(
+        "O"   => -2,
+        "Cl"  => -1,
+        "H"   =>  1,
+        "Na"  =>  1,
+    )
+
+    fragment_basis_sets = Dict(
+        ["O", "H"] => "aug-cc-pvtz",
+        ["O", "H", "H", "H"] => "aug-cc-pvtz",
+        ["Cl"] => "aug-cc-pvtz",
+        ["Na"] => "aug-cc-pvtz"
+    )
+    
+    header_string = "echo
+start
+title \"W20_OH- MP2/AVTZ vertical ionization energy at REAXFF/CGEM Thermalized configurations with point charges from CGeM environment\"\n\n"
+
+    method_section_anion = "basis spherical
+ O1 library O aug-cc-pvtz
+ H1 library H aug-cc-pvtz
+ O library aug-cc-pvdz
+ H library aug-cc-pvdz
+end
+
+set lindep:n_dep 0
+
+scf
+vectors atomic output anion.movecs
+ thresh 1d-6
+ uhf
+ singlet
+ maxiter 350
+ tol2e 1d-15
+end
+
+mp2
+freeze atomic
+end
+
+task mp2 energy
+
+set bq anion
+
+scf
+vectors input anion.movecs
+ thresh 1d-6
+ uhf
+ singlet
+ maxiter 350
+ tol2e 1d-15
+end
+
+mp2
+freeze atomic
+end
+
+task mp2 energy\n\n"
+
+method_section_radical = "bq \"anion\"
+clear
+end
+basis spherical
+ O1 library O aug-cc-pvtz
+ H1 library H aug-cc-pvtz
+ O library aug-cc-pvdz
+ H library aug-cc-pvdz
+end
+
+set lindep:n_dep 0
+
+scf
+vectors atomic output radical.movecs
+ thresh 1d-6
+ uhf
+ doublet
+ maxiter 350
+ tol2e 1d-15
+end
+
+mp2
+freeze atomic
+end
+
+task mp2 energy
+
+set bq radical
+
+scf
+vectors input radical.movecs
+ thresh 1d-6
+ uhf
+ doublet
+ maxiter 350
+ tol2e 1d-15
+end
+
+mp2
+freeze atomic
+end
+
+task mp2 energy\n\n"
+
+    mkpath("nwchem_input_files")
+    @showprogress for i_sample in 1:num_samples
+        _, cluster_labels, cluster_geom = read_xyz(string("sampled_geoms_and_optimized_shells/cluster_sample_mp2_", i_sample, ".xyz"))
+
+        cluster_charge = sum([atom_charges[label] for label in cluster_labels[1]])
+        
+        # assumes OH is sorted to the top
+        cluster_labels[1][1] = "O1"
+        cluster_labels[1][2] = "H1"
+
+        geom_string = geometry_to_string(cluster_geom[1], cluster_labels[1])
+        open(string("nwchem_input_files/", nwchem_infile_prefix, "_sample_", i_sample, ".nw"), "w") do io
+            # anion contribution to file
+            write(io, header_string)
+            write(io, string("charge ", cluster_charge, "\nGEOMETRY units angstrom noautoz nocenter\nsymmetry c1\n"))
+            write(io, geom_string)
+            write(io, "end\n\n")
+            write(io, "bq \"anion\"\n")
+            writedlm(io, readdlm(string("sampled_geoms_and_optimized_shells/cluster_sample_mp2_", i_sample, "_shell_positions_anion.txt")))
+            write(io, "end\n\n")
+            write(io, method_section_anion)
+            
+            # radical contribution to file
+            write(io, string("charge ", cluster_charge-1, "\nGEOMETRY units angstrom noautoz nocenter\nsymmetry c1\n"))
+            write(io, geom_string)
+            write(io, "end\n\n")
+            write(io, "bq \"anion\"\n")
+            writedlm(io, readdlm(string("sampled_geoms_and_optimized_shells/cluster_sample_mp2_", i_sample, "_shell_positions_radical.txt")))
+            write(io, "end\n\n")
+            write(io, method_section_radical)
         end
     end
 end
