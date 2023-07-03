@@ -64,7 +64,7 @@ function parse_lammps_trajectory(infile::String, type_to_label::Union{Dict{Int, 
     return atom_types, coords
 end
 
-function generate_reaxff_cgem_configuration_with_shells(coords::Matrix{Float64}, labels::Vector{String}, add_extra_shell::Vector{Int}=Int[], no_shell::Vector{Int}=Int[], label_to_type::Dict{String, Int}=Dict("O"=>2, "H"=>1))
+function generate_reaxff_cgem_configuration_with_shells(coords::Matrix{Float64}, labels::Vector{String}, add_extra_shell::Vector{Int}=Int[], no_shell::Vector{Int}=Int[], label_to_type::Dict{String, Int}=Dict("O"=>2, "H"=>1, "Cl"=>4,"Na"=>5, "Ca"=>6, "I"=>7))
     coords_with_shells = Vector{Float64}[]
     charges = Int[]
     types = Int[]

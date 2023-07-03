@@ -71,6 +71,9 @@ function parse_EDA_terms(output_file::String)
         if occursin("E_disp   (DISP)", line)
             push!(disp, tryparse(Float64, split(line)[5]))
         end
+        if occursin("E_cls_disp  (CLS DISP)", line)
+            push!(disp, tryparse(Float64, split(line)[6]))
+        end
         if occursin("(CLS ELEC)", line)
             push!(cls_elec, tryparse(Float64, split(line)[6]))
         end
@@ -108,6 +111,8 @@ function parse_EDA_terms!(eda_dict::Dict{Symbol, Vector{Float64}}, output_file::
             push!(eda_dict[:pauli], tryparse(Float64, split(line)[5]))
         elseif occursin("E_disp   (DISP)", line)
             push!(eda_dict[:disp], tryparse(Float64, split(line)[5]))
+        elseif occursin("E_cls_disp  (CLS DISP)", line)
+            push!(eda_dict[:disp], tryparse(Float64, split(line)[6]))
         elseif occursin("(CLS ELEC)", line)
             push!(eda_dict[:cls_elec], tryparse(Float64, split(line)[6]))
         elseif occursin("(MOD PAULI)", line)
@@ -442,18 +447,21 @@ function write_xyz_and_csv_from_EDA_calculation(eda_job_output_file::String, csv
     # get xyz coordinates from input files
     labels, geoms = parse_xyz_from_EDA_input(eda_job_output_file)
 
-    # get EDA data from output files
+    # NOTE: For molecules that use ECPs, the regular Pauli and Elec are not calculated.
+    # For simplicity, we ignore them here. But if you uncomment them and are parsing
+    # for molecules that don't use ECPs, they will be parsed properly.
     eda_data = Dict(
+        #:elec => Float64[],
+        #:pauli => Float64[],
         :cls_elec => Float64[],
-        :elec => Float64[],
         :mod_pauli => Float64[],
-        :pauli => Float64[],
         :disp => Float64[],
         :pol => Float64[],
         :ct => Float64[],
         :int => Float64[],
     )
-
+        
+    # get EDA data from output files
     parse_EDA_terms!(eda_data, eda_job_output_file)
     # populate interaction energy key
     for i in eachindex(eda_data[:cls_elec])

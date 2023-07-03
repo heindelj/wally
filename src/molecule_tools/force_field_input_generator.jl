@@ -133,21 +133,21 @@ function generate_fragment_inputs(
         write(io, perlmutter_slurm_script_string(lstrip(replace(infile_name_prefix, output_dir => ""), '/'), num_batches + 1, num_batches * num_jobs_per_batch + 1, num_leftover))
     end
 
-    for i in (num_batches*num_jobs_per_batch+1):(num_batches*num_jobs_per_batch+num_leftover)
-        generate_force_decomposition_input(
-            string(infile_name_prefix, "_batch_", num_batches + 1, "_", i, ".in"),
-            coords[i], labels[i], fragment_indices,
-            charge, multiplicity,
-            fragment_charges, fragment_multiplicities
-        )
-    end
+    #for i in (num_batches*num_jobs_per_batch+1):(num_batches*num_jobs_per_batch+num_leftover)
+    #    generate_force_decomposition_input(
+    #        string(infile_name_prefix, "_batch_", num_batches + 1, "_", i, ".in"),
+    #        coords[i], labels[i], fragment_indices,
+    #        charge, multiplicity,
+    #        fragment_charges, fragment_multiplicities
+    #    )
+    #end
 end
 
 function perlmutter_slurm_script_string(infile_prefix::AbstractString, batch_number::Int, index_start::Int, num_per_batch::Int)
     index_end = index_start + num_per_batch - 1
     full_file = string(infile_prefix, "_batch_", batch_number)
     return string("#!/bin/bash
-#SBATCH -A m2101
+#SBATCH -A m4260
 #SBATCH -t 12:00:00
 #SBATCH -q regular
 #SBATCH -C cpu
@@ -184,7 +184,7 @@ end
 
 function perlmutter_fchk_slurm_script_string()
     return string("#!/bin/bash
-#SBATCH -A m2101
+#SBATCH -A m4260
 #SBATCH -t 12:00:00
 #SBATCH -q regular
 #SBATCH -C cpu

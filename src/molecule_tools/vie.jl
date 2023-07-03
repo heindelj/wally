@@ -337,10 +337,10 @@ task mp2 energy\n\n"
             write(io, method_section_anion)
             
             # radical contribution to file
-            write(io, string("charge ", cluster_charge-1, "\nGEOMETRY units angstrom noautoz nocenter\nsymmetry c1\n"))
+            write(io, string("charge ", cluster_charge+1, "\nGEOMETRY units angstrom noautoz nocenter\nsymmetry c1\n"))
             write(io, geom_string)
             write(io, "end\n\n")
-            write(io, "bq \"anion\"\n")
+            write(io, "bq \"radical\"\n")
             writedlm(io, readdlm(string("sampled_geoms_and_optimized_shells/cluster_sample_mp2_", i_sample, "_shell_positions_radical.txt")))
             write(io, "end\n\n")
             write(io, method_section_radical)
