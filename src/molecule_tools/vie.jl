@@ -40,11 +40,12 @@ def nums_to_labels(nums):
 
 if __name__ == \'__main__\':
     try:
-        cluster_file, env_file = sys.argv[1], sys.argv[2]
+        cluster_file, env_file, num_hydroxides = sys.argv[1], sys.argv[2], sys.argv[3]
     except:
         print(\"Expected cluster xyz file followed by environment xyz file followed by index for writing output charges.\")
         sys.exit(1)
 
+    num_hydroxides = int(num_hydroxides)
     cluster_nums, cluster_coords = load_xyz(cluster_file)
     env_nums, env_coords = load_xyz(env_file)
     all_coords = np.vstack((cluster_coords, env_coords))
@@ -52,6 +53,8 @@ if __name__ == \'__main__\':
     coords_s = np.copy(all_coords)
     drug_params = get_drug_parameters()
     cgem = CGem.from_molecule(all_nums, all_coords, coords_s=coords_s, opt_shells=True, **drug_params)
+    for i in range(2*(num_hydroxides-1), 0, -2)
+        coords_s = add_shell_in_place(cgem.coords_s, i)
     write_charges(cgem.coords_c[len(cluster_coords):,:], cgem.coords_s[len(cluster_coords):,:], os.path.splitext(cluster_file)[0] + \"_shell_positions_radical.txt\")
     coords_s = add_shell_in_place(cgem.coords_s, 0)
     cgem = CGem.from_molecule(all_nums, all_coords, coords_s=coords_s, opt_shells=True, **drug_params)
@@ -227,7 +230,7 @@ function write_input_files_for_vie_nwchem(
     
     header_string = "echo
 start
-title \"W20_OH- MP2/AVTZ vertical ionization energy at REAXFF/CGEM Thermalized configurations with point charges from CGeM environment\"\n\n"
+title \"W20_OH- MP2/AVTZ vertical ionization energy at REAXFF/CGEM Thermalized configurations with point charges from CGeM environment\"\n\nset bq:max_nbq 70000\n"
 
     method_section_anion = "basis spherical
  O1 library O aug-cc-pvtz
@@ -316,7 +319,12 @@ task mp2 energy\n\n"
 
     mkpath("nwchem_input_files")
     @showprogress for i_sample in 1:num_samples
-        _, cluster_labels, cluster_geom = read_xyz(string("sampled_geoms_and_optimized_shells/cluster_sample_mp2_", i_sample, ".xyz"))
+        try
+            _, cluster_labels, cluster_geom = read_xyz(string("sampled_geoms_and_optimized_shells/cluster_sample_mp2_", i_sample, ".xyz"))
+        catch e
+            @warn "Couldn't open charges file for sample $i. Moving on to the next sample."
+            continue
+        end
 
         cluster_charge = sum([atom_charges[label] for label in cluster_labels[1]])
         

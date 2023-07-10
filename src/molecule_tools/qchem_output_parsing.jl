@@ -105,21 +105,21 @@ Appends output to existing dictionary.
 function parse_EDA_terms!(eda_dict::Dict{Symbol, Vector{Float64}}, output_file::String, parse_fragment_energies::Bool=true, fragment_zero::Float64=0.0)
     lines = readlines(output_file)
     for (i, line) in enumerate(lines)
-        if occursin("(ELEC)", line)
+        if occursin("(ELEC)", line) && haskey(eda_dict, :elec)
             push!(eda_dict[:elec], tryparse(Float64, split(line)[5]))
-        elseif occursin("(PAULI)", line)
+        elseif occursin("(PAULI)", line) && haskey(eda_dict, :pauli)
             push!(eda_dict[:pauli], tryparse(Float64, split(line)[5]))
-        elseif occursin("E_disp   (DISP)", line)
+        elseif occursin("E_disp   (DISP)", line) && haskey(eda_dict, :disp)
             push!(eda_dict[:disp], tryparse(Float64, split(line)[5]))
-        elseif occursin("E_cls_disp  (CLS DISP)", line)
+        elseif occursin("E_cls_disp  (CLS DISP)", line) && haskey(eda_dict, :disp)
             push!(eda_dict[:disp], tryparse(Float64, split(line)[6]))
-        elseif occursin("(CLS ELEC)", line)
+        elseif occursin("(CLS ELEC)", line) && haskey(eda_dict, :cls_elec)
             push!(eda_dict[:cls_elec], tryparse(Float64, split(line)[6]))
-        elseif occursin("(MOD PAULI)", line)
+        elseif occursin("(MOD PAULI)", line) && haskey(eda_dict, :mod_pauli)
             push!(eda_dict[:mod_pauli], tryparse(Float64, split(line)[6]))
-        elseif occursin("POLARIZATION", line)
+        elseif occursin("POLARIZATION", line) && haskey(eda_dict, :pol)
             push!(eda_dict[:pol], tryparse(Float64, split(line)[2]))
-        elseif occursin("CHARGE TRANSFER", line)
+        elseif occursin("CHARGE TRANSFER", line) && haskey(eda_dict, :ct)
             push!(eda_dict[:ct], tryparse(Float64, split(line)[3]))
         elseif occursin("Fragment Energies", line)
             if parse_fragment_energies && haskey(eda_dict, :deform)
@@ -442,7 +442,7 @@ function write_xyz_and_csv_from_EDA_scans(folder_path::String, csv_outfile::Stri
     return
 end
 
-function write_xyz_and_csv_from_EDA_calculation(eda_job_output_file::String, csv_outfile::String, xyz_outfile::String)
+function write_xyz_and_csv_from_EDA_calculation(eda_job_output_file::String, csv_outfile::String, xyz_outfile::String, dist_index_1::Int=0, dist_index_2::Int=0)
 
     # get xyz coordinates from input files
     labels, geoms = parse_xyz_from_EDA_input(eda_job_output_file)
@@ -473,6 +473,16 @@ function write_xyz_and_csv_from_EDA_calculation(eda_job_output_file::String, csv
     df = DataFrame(eda_data)
     geom_index = [1:nrow(df)...]
     df[!, :index] = geom_index
+
+    if dist_index_1 != 0 && dist_index_2 != 0
+        distances = zeros(length(geoms))
+        for i in eachindex(geoms)
+            r = norm(geoms[i][:, dist_index_1] - geoms[i][:, dist_index_2])
+            distances[i] = r
+        end
+        df[!, :distances] = distances
+    end
+
     write_xyz(xyz_outfile, [string(length(labels[i]), "\n") for i in eachindex(labels)], labels, geoms)
     CSV.write(csv_outfile, df)
     return
