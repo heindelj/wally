@@ -319,8 +319,11 @@ task mp2 energy\n\n"
 
     mkpath("nwchem_input_files")
     @showprogress for i_sample in 1:num_samples
-        if !ispath(string("sampled_geoms_and_optimized_shells/cluster_sample_mp2_", i_sample, ".xyz"))
-            @warn "Couldn't open charges file for sample $i. Moving on to the next sample."
+        if (
+            !ispath(string("sampled_geoms_and_optimized_shells/cluster_sample_mp2_", i_sample, "_shell_positions_anion.txt")) || 
+            !ispath(string("sampled_geoms_and_optimized_shells/cluster_sample_mp2_", i_sample, "_shell_positions_radical.txt"))
+        )
+            @warn "Couldn't open charges file for sample $i_sample. Moving on to the next sample."
             continue
         end
         _, cluster_labels, cluster_geom = read_xyz(string("sampled_geoms_and_optimized_shells/cluster_sample_mp2_", i_sample, ".xyz"))
