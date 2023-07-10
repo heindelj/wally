@@ -319,12 +319,11 @@ task mp2 energy\n\n"
 
     mkpath("nwchem_input_files")
     @showprogress for i_sample in 1:num_samples
-        try
-            _, cluster_labels, cluster_geom = read_xyz(string("sampled_geoms_and_optimized_shells/cluster_sample_mp2_", i_sample, ".xyz"))
-        catch e
+        if !ispath("sampled_geoms_and_optimized_shells/cluster_sample_mp2_", i_sample, ".xyz")
             @warn "Couldn't open charges file for sample $i. Moving on to the next sample."
             continue
         end
+        _, cluster_labels, cluster_geom = read_xyz(string("sampled_geoms_and_optimized_shells/cluster_sample_mp2_", i_sample, ".xyz"))
 
         cluster_charge = sum([atom_charges[label] for label in cluster_labels[1]])
         
