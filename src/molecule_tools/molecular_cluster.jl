@@ -701,5 +701,7 @@ function find_average_distance_between_molecular_centers(cluster::Cluster, molec
         end
     end
 
-    return total_distance    
+    npairs = length(center_indices) * (length(center_indices) - 1) / 2
+
+    return total_distance / npairs
 end
