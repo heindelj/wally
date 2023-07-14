@@ -204,7 +204,7 @@ mem_static 16000
             write(io, rem_input_string_with_env)
             write(io, string("\n\n\$basis\n", basis_string, "\$end\n\n"))
             write(io, "\n\$external_charges\n")
-            writedlm(io, readdlm(string("sampled_geoms_and_optimized_shells/cluster_sample_", i_sample, "_shell_positions_radical.txt")))
+            writedlm(io, readdlm(string("sampled_geoms_and_optimized_shells/cluster_sample_", i_sample, "_shell_positions_anion.txt")))
             write(io, "\$end\n\n")
         end
     end
@@ -320,13 +320,13 @@ task mp2 energy\n\n"
     mkpath("nwchem_input_files")
     @showprogress for i_sample in 1:num_samples
         if (
-            !ispath(string("sampled_geoms_and_optimized_shells/cluster_sample_mp2_", i_sample, "_shell_positions_anion.txt")) || 
-            !ispath(string("sampled_geoms_and_optimized_shells/cluster_sample_mp2_", i_sample, "_shell_positions_radical.txt"))
+            !ispath(string("sampled_geoms_and_optimized_shells/cluster_sample_", i_sample, "_shell_positions_anion.txt")) || 
+            !ispath(string("sampled_geoms_and_optimized_shells/cluster_sample_", i_sample, "_shell_positions_radical.txt"))
         )
             @warn "Couldn't open charges file for sample $i_sample. Moving on to the next sample."
             continue
         end
-        _, cluster_labels, cluster_geom = read_xyz(string("sampled_geoms_and_optimized_shells/cluster_sample_mp2_", i_sample, ".xyz"))
+        _, cluster_labels, cluster_geom = read_xyz(string("sampled_geoms_and_optimized_shells/cluster_sample_", i_sample, ".xyz"))
 
         cluster_charge = sum([atom_charges[label] for label in cluster_labels[1]])
         
@@ -342,7 +342,7 @@ task mp2 energy\n\n"
             write(io, geom_string)
             write(io, "end\n\n")
             write(io, "bq \"anion\"\n")
-            writedlm(io, readdlm(string("sampled_geoms_and_optimized_shells/cluster_sample_mp2_", i_sample, "_shell_positions_anion.txt")))
+            writedlm(io, readdlm(string("sampled_geoms_and_optimized_shells/cluster_sample_", i_sample, "_shell_positions_anion.txt")))
             write(io, "end\n\n")
             write(io, method_section_anion)
             
@@ -351,7 +351,7 @@ task mp2 energy\n\n"
             write(io, geom_string)
             write(io, "end\n\n")
             write(io, "bq \"radical\"\n")
-            writedlm(io, readdlm(string("sampled_geoms_and_optimized_shells/cluster_sample_mp2_", i_sample, "_shell_positions_radical.txt")))
+            writedlm(io, readdlm(string("sampled_geoms_and_optimized_shells/cluster_sample_", i_sample, "_shell_positions_radical.txt")))
             write(io, "end\n\n")
             write(io, method_section_radical)
         end
