@@ -53,7 +53,7 @@ if __name__ == \'__main__\':
     coords_s = np.copy(all_coords)
     drug_params = get_drug_parameters()
     cgem = CGem.from_molecule(all_nums, all_coords, coords_s=coords_s, opt_shells=True, **drug_params)
-    for i in range(2*(num_hydroxides-1), 0, -2)
+    for i in range(2*(num_hydroxides-1), 0, -2):
         coords_s = add_shell_in_place(cgem.coords_s, i)
     write_charges(cgem.coords_c[len(cluster_coords):,:], cgem.coords_s[len(cluster_coords):,:], os.path.splitext(cluster_file)[0] + \"_shell_positions_radical.txt\")
     coords_s = add_shell_in_place(cgem.coords_s, 0)
