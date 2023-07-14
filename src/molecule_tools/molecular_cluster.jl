@@ -688,20 +688,3 @@ mem_static 16000
         end
     end
 end
-
-function find_average_distance_between_molecular_centers(cluster::Cluster, molecule_labels::Vector{String})
-    center_indices = molecules_by_formula(cluster, molecule_labels)
-    if length(center_indices) < 2
-        return 0.0
-    end
-    total_distance = 0.0
-    for i in 1:length(center_indices)-1
-        for j in (i+1):length(center_indices)
-            total_distance += norm(cluster.centers[i] - cluster.centers[j])
-        end
-    end
-
-    npairs = length(center_indices) * (length(center_indices) - 1) / 2
-
-    return total_distance / npairs
-end
