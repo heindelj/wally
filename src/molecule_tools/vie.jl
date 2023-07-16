@@ -276,7 +276,7 @@ mem_total 256000
 mem_static 16000
 \$end"
 
-    mkpath("qchem_input_files")
+    mkpath("qchem_input_files_enthalpy")
     @showprogress for i_sample in 1:num_samples
         if (
             !ispath(string("sampled_geoms_and_optimized_shells/cluster_sample_", i_sample, "_shell_positions_anion.txt"))
@@ -314,7 +314,7 @@ mem_static 16000
 
         geom_string = geometry_to_string(cluster_geom[1], cluster_labels[1])
         # write anion file
-        open(string("qchem_input_files/", qchem_infile_prefix, "_no_solute_", i_sample, ".in"), "w") do io
+        open(string("qchem_input_files_enthalpy/", qchem_infile_prefix, "_no_solute_", i_sample, ".in"), "w") do io
             write(io, "\$molecule\n")
             write(io, string(cluster_charge, " ", 1, "\n"))
             write(io, geom_string)
