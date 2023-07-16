@@ -287,7 +287,7 @@ mem_static 16000
         _, cluster_labels, cluster_geom = read_xyz(string("sampled_geoms_and_optimized_shells/cluster_sample_", i_sample, ".xyz"))
 
         cluster_labels[1] = cluster_labels[1][setdiff(1:length(cluster_labels[1]), indices_to_remove_from_cluster)]
-        cluster_geom[1]   = cluster_geom[1][:, setdiff(1:length(cluster_geom[1]), indices_to_remove_from_cluster)]
+        cluster_geom[1]   = cluster_geom[1][:, setdiff(1:size(cluster_geom[1], 2), indices_to_remove_from_cluster)]
 
         cluster_charge = sum([atom_charges[label] for label in cluster_labels[1]])
         
