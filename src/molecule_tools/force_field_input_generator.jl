@@ -1,6 +1,7 @@
 include("sample_configurations.jl")
 include("qchem_input_generator.jl")
 include("gdma_and_orient.jl")
+include("scans.jl")
 
 function generate_all_inputs_main(
     infile_name::String,
@@ -141,6 +142,350 @@ function generate_fragment_inputs(
     #        fragment_charges, fragment_multiplicities
     #    )
     #end
+end
+
+initial_distances = Dict(
+        :LiF => 1.5740842692,
+        :LiCl => 2.0273134221999998,
+        :LiBr => 2.1804909851999996,
+        :LiI => 2.3928627104,
+        :NaF => 1.9395644696,
+        :NaCl => 2.3681930533999997,
+        :NaBr => 2.5125576179999998,
+        :NaI => 2.7130080771999996,
+        :KF => 2.191804663,
+        :KCl => 2.6883189056,
+        :KBr => 2.8474846406000003,
+        :KI => 3.0659928548,
+        :RbF => 2.3418174634,
+        :RbCl => 2.848191689,
+        :RbBr => 3.0101616448,
+        :RbI => 3.2302740466,
+        :CsF => 2.3791859333999996,
+        :CsCl => 2.9408768782,
+        :CsBr => 3.1139594843999996,
+        :CsI => 3.3471488736,
+        :MgF => 1.6965971996000002,
+        :MgCl => 2.1010917015999997,
+        :MgBr => 2.2447553162,
+        :MgI => 2.4449346346,
+        :CaF => 1.8660764668,
+        :CaCl => 2.3192035096000003,
+        :CaBr => 2.4710069642,
+        :CaI => 2.6804184199999996,
+
+        :Li2F =>1.675469,
+        :Na2F => 2.021674,
+        :K2F => 2.348659,
+        :Rb2F => 2.501305,
+        :Cs2F => 2.607304,
+        :Mg2F => 1.922883,
+        :Ca2F => 2.197071,
+        :LiF2 =>1.697896,
+        :NaF2 => 2.054501,
+        :KF2 => 2.400956,
+        :RbF2 => 2.557590,
+        :CsF2 => 2.673066,
+        :MgF2 => 1.754368,
+        :CaF2 => 2.027367,
+
+        :Li2Cl =>2.142979,
+        :Na2Cl => 2.474615,
+        :K2Cl => 2.837262,
+        :Rb2Cl => 2.996256,
+        :Cs2Cl => 3.134003,
+        :Mg2Cl => 2.346741,
+        :Ca2Cl => 2.652802,
+        :LiCl2 =>2.161592,
+        :NaCl2 => 2.496780,
+        :KCl2 => 2.878317,
+        :RbCl2 => 3.046327,
+        :CsCl2 => 3.204202,
+        :MgCl2 => 2.172486,
+        :CaCl2 => 2.469349,
+
+        :Li2Br =>2.297300,
+        :Na2Br => 2.624763,
+        :K2Br => 2.992072,
+        :Rb2Br => 3.154446,
+        :Cs2Br => 3.292489,
+        :Mg2Br => 2.487264,
+        :Ca2Br => 2.799551,
+        :LiBr2 =>2.321164,
+        :NaBr2 => 2.649016,
+        :KBr2 => 3.033684,
+        :RbBr2 => 3.204445,
+        :CsBr2 => 3.364454,
+        :MgBr2 => 2.323007,
+        :CaBr2 => 2.619850,
+
+        :Li2I =>2.508365,
+        :Na2I => 2.832592,
+        :K2I => 3.208172,
+        :Rb2I => 3.375760,
+        :Cs2I => 3.527121,
+        :Mg2I => 2.684221,
+        :Ca2I => 2.999745,
+        :LiI2 =>2.539843,
+        :NaI2 => 2.862934,
+        :KI2 => 3.252194,
+        :RbI2 => 3.426597,
+        :CsI2 => 3.591727,
+        :MgI2 => 2.531817,
+        :CaI2 => 2.830109,
+        
+
+        # these are just guesses since there is no minimum
+        :FF => 2.5,
+        :ClCl => 3.7,
+        :BrBr => 4.0,
+        :II => 4.6,
+        :LiLi => 2.4,
+        :NaNa => 2.82,
+        :KK => 3.6,
+        :RbRb => 3.8,
+        :CsCs => 4.2,
+        :MgMg => 2.3,
+        :CaCa => 2.8,
+    )
+
+function generate_ion_pair_scan_inputs()
+    anions = ["F", "Cl", "Br", "I"]
+    monovalent_cations = ["Li", "Na", "K", "Rb", "Cs"]
+    divalent_cations = ["Mg", "Ca"]
+
+    mkpath("ion_pair_scans")
+    # same ion monovalent cations
+    for cation in monovalent_cations
+        geom = zeros(3, 2)
+        geom[1, 2] = initial_distances[Symbol(cation, cation)]
+        scan_geoms = distance_scan(geom, (1, 2), -0.6, 5.4, 51)
+        write_multi_input_file_fragments(
+            string("ion_pair_scans/", cation, "_", cation, "_scan_wb97xv_eda.in"),
+            scan_geoms, [cation, cation], eda_input(),
+            2, 1, [[1], [2]], [1, 1], [1, 1]
+        )
+    end
+
+    # same ion divalent cations
+    for cation in divalent_cations
+        geom = zeros(3, 2)
+        geom[1, 2] = initial_distances[Symbol(cation, cation)]
+        scan_geoms = distance_scan(geom, (1, 2), -0.6, 5.4, 61)
+        write_multi_input_file_fragments(
+            string("ion_pair_scans/", cation, "_", cation, "_scan_wb97xv_eda.in"),
+            scan_geoms, [cation, cation], eda_input(),
+            4, 1, [[1], [2]], [2, 2], [1, 1]
+        )
+    end
+
+    # same ion anions
+    for anion in anions
+        geom = zeros(3, 2)
+        geom[1, 2] = initial_distances[Symbol(anion, anion)]
+        scan_geoms = distance_scan(geom, (1, 2), -0.6, 5.4, 61)
+        write_multi_input_file_fragments(
+            string("ion_pair_scans/", anion, "_", anion, "_scan_wb97xv_eda.in"),
+            scan_geoms, [anion, anion], eda_input(),
+            -2, 1, [[1], [2]], [-1, -1], [1, 1]
+        )
+    end
+
+    # anion monovalent cation
+    for cation in monovalent_cations
+        for anion in anions
+            geom = zeros(3, 2)
+            geom[1, 2] = initial_distances[Symbol(cation, anion)]
+            scan_geoms = distance_scan(geom, (1, 2), -0.6, 5.4, 61)
+            write_multi_input_file_fragments(
+                string("ion_pair_scans/", cation, "_", anion, "_scan_wb97xv_eda.in"),
+                scan_geoms, [cation, anion], eda_input(),
+                0, 1, [[1], [2]], [1, -1], [1, 1]
+            )
+        end
+    end
+
+    # anion divalent cation
+    for cation in divalent_cations
+        for anion in anions
+            geom = zeros(3, 2)
+            geom[1, 2] = initial_distances[Symbol(cation, anion)]
+            scan_geoms = distance_scan(geom, (1, 2), -0.6, 5.4, 61)
+            write_multi_input_file_fragments(
+                string("ion_pair_scans/", cation, "_", anion, "_scan_wb97xv_eda.in"),
+                scan_geoms, [cation, anion], eda_input(),
+                1, 1, [[1], [2]], [2, -1], [1, 1]
+            )
+        end
+    end
+
+    # monovalent cation divalent cation
+    for cation_1 in monovalent_cations
+        for cation_2 in divalent_cations
+            geom = zeros(3, 2)
+            geom[1, 2] = 0.5 * (initial_distances[Symbol(cation_1, cation_1)] + initial_distances[Symbol(cation_2, cation_2)])
+            scan_geoms = distance_scan(geom, (1, 2), -0.6, 5.4, 61)
+            write_multi_input_file_fragments(
+                string("ion_pair_scans/", cation_1, "_", cation_2, "_scan_wb97xv_eda.in"),
+                scan_geoms, [cation_1, cation_2], eda_input(),
+                3, 1, [[1], [2]], [1, 2], [1, 1]
+            )
+        end
+    end
+end
+
+function generate_ion_triples_2d_scan_inputs()
+    anions = ["F", "Cl", "Br", "I"]
+    monovalent_cations = ["Li", "Na", "K", "Rb", "Cs"]
+    divalent_cations = ["Mg", "Ca"]
+
+    mkpath("ion_triple_scans")
+    # two anion one monovalent cation
+    for cation in monovalent_cations
+        for anion in anions
+            labels = [anion, cation, anion]
+            geom = zeros(3, 3)
+            initial_pos = initial_distances[Symbol(cation, anion, :2)]
+            geom[1, 1] = -initial_pos
+            geom[1, 3] =  initial_pos
+            distance_scan_geoms = distance_scan(geom, (1, 3), -0.6, 5.4, 31)
+            scan_geoms = angle_scan.(distance_scan_geoms, ((1,2,3),), (0.0,), (90.0,), (10,))
+            scan_geoms = reduce(vcat, scan_geoms)
+            write_multi_input_file_fragments(
+                string("ion_triple_scans/", cation, "_", anion, "2_2d_scan_wb97xv_eda.in"),
+                scan_geoms, labels, eda_input(),
+                -1, 1, [[1], [2], [3]], [-1, 1, -1], [1, 1, 1]
+            )
+        end
+    end
+
+    # two anion one divalent cation
+    for cation in divalent_cations
+        for anion in anions
+            labels = [anion, cation, anion]
+            geom = zeros(3, 3)
+            initial_pos = initial_distances[Symbol(cation, anion, :2)]
+            geom[1, 1] = -initial_pos
+            geom[1, 3] =  initial_pos
+            distance_scan_geoms = distance_scan(geom, (1, 3), -0.6, 5.4, 31)
+            scan_geoms = angle_scan.(distance_scan_geoms, ((1,2,3),), (0.0,), (90.0,), (10,))
+            scan_geoms = reduce(vcat, scan_geoms)
+            write_multi_input_file_fragments(
+                string("ion_triple_scans/", cation, "_", anion, "2_2d_scan_wb97xv_eda.in"),
+                scan_geoms, labels, eda_input(),
+                0, 1, [[1], [2], [3]], [-1, 2, -1], [1, 1, 1]
+            )
+        end
+    end
+
+    # two monovalent cation one anion
+    for cation in monovalent_cations
+        for anion in anions
+            labels = [cation, anion, cation]
+            geom = zeros(3, 3)
+            initial_pos = initial_distances[Symbol(cation, :2, anion)]
+            geom[1, 1] = -initial_pos
+            geom[1, 3] =  initial_pos
+            distance_scan_geoms = distance_scan(geom, (1, 3), -0.6, 5.4, 31)
+            scan_geoms = angle_scan.(distance_scan_geoms, ((1,2,3),), (0.0,), (90.0,), (10,))
+            scan_geoms = reduce(vcat, scan_geoms)
+            write_multi_input_file_fragments(
+                string("ion_triple_scans/", cation, "2_", anion, "_2d_scan_wb97xv_eda.in"),
+                scan_geoms, labels, eda_input(),
+                1, 1, [[1], [2], [3]], [1, -1, 1], [1, 1, 1]
+            )
+        end
+    end
+
+    # two divalent cation one anion
+    for cation in divalent_cations
+        for anion in anions
+            labels = [cation, anion, cation]
+            geom = zeros(3, 3)
+            initial_pos = initial_distances[Symbol(cation, :2, anion)]
+            geom[1, 1] = -initial_pos
+            geom[1, 3] =  initial_pos
+            distance_scan_geoms = distance_scan(geom, (1, 3), -0.6, 5.4, 31)
+            scan_geoms = angle_scan.(distance_scan_geoms, ((1,2,3),), (0.0,), (90.0,), (10,))
+            scan_geoms = reduce(vcat, scan_geoms)
+            write_multi_input_file_fragments(
+                string("ion_triple_scans/", cation, "2_", anion, "_2d_scan_wb97xv_eda.in"),
+                scan_geoms, labels, eda_input(),
+                3, 1, [[1], [2], [3]], [2, -1, 2], [1, 1, 1]
+            )
+        end
+    end
+end
+
+function generate_ion_triples_optimization_input()
+    anions = ["F", "Cl", "Br", "I"]
+    monovalent_cations = ["Li", "Na", "K", "Rb", "Cs"]
+    divalent_cations = ["Mg", "Ca"]
+
+    mkpath("ion_triples_optimization")
+    # two anion one monovalent cation
+    for cation in monovalent_cations
+        for anion in anions
+            labels = [anion, cation, anion]
+            geom = zeros(3, 3)
+            initial_pos = 0.5 * (initial_distances[Symbol(cation, anion)] - 0.2)
+            geom[1, 1] = -initial_pos
+            geom[1, 3] =  initial_pos
+            write_input_file(
+                string("ion_triples_optimization/", cation, "_", anion, "2_wb97xv_tzvppd_opt.in"),
+                geom, labels, wb97xv_tzvppd_opt(),
+                -1, 1
+            )
+        end
+    end
+
+    # two anion one divalent cation
+    for cation in divalent_cations
+        for anion in anions
+            labels = [anion, cation, anion]
+            geom = zeros(3, 3)
+            initial_pos = 0.5 * (initial_distances[Symbol(cation, anion)] - 0.2)
+            geom[1, 1] = -initial_pos
+            geom[1, 3] =  initial_pos
+            write_input_file(
+                string("ion_triples_optimization/", cation, "_", anion, "2_wb97xv_tzvppd_opt.in"),
+                geom, labels, wb97xv_tzvppd_opt(),
+                0, 1
+            )
+        end
+    end
+
+    # two monovalent cation one anion
+    for cation in monovalent_cations
+        for anion in anions
+            labels = [cation, anion, cation]
+            geom = zeros(3, 3)
+            initial_pos = 0.5 * (initial_distances[Symbol(cation, anion)] - 0.2)
+            geom[1, 1] = -initial_pos
+            geom[1, 3] =  initial_pos
+            write_input_file(
+                string("ion_triples_optimization/", cation, "2_", anion, "_wb97xv_tzvppd_opt.in"),
+                geom, labels, wb97xv_tzvppd_opt(),
+                1, 1
+            )
+        end
+    end
+
+    # two divalent cation one anion
+    for cation in divalent_cations
+        for anion in anions
+            labels = [cation, anion, cation]
+            geom = zeros(3, 3)
+            initial_pos = 0.5 * (initial_distances[Symbol(cation, anion)] - 0.2)
+            geom[1, 1] = -initial_pos
+            geom[1, 3] =  initial_pos
+            write_input_file(
+                string("ion_triples_optimization/", cation, "2_", anion, "_wb97xv_tzvppd_opt.in"),
+                geom, labels, wb97xv_tzvppd_opt(),
+                3, 1
+            )
+        end
+    end
 end
 
 function perlmutter_slurm_script_string(infile_prefix::AbstractString, batch_number::Int, index_start::Int, num_per_batch::Int)

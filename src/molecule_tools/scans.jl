@@ -53,6 +53,12 @@ function angle_scan(coords::Matrix{Float64}, indices::Tuple{Int, Int, Int}, Δθ
     @views r_kj = coords[:, indices[3]] - coords[:, indices[2]]
     coords_out = [copy(coords) for _ in 1:nsteps]
     n = cross(normalize(r_ij), normalize(r_kj)) # normal to plane of r_ij and r_kj
+    
+    # this means r_ij and r_kj are collinear so we just pick a random
+    # vector cause it doesn't matter what axis we rotate around in this case.
+    if norm(n) < 1e-10
+        n = gram_schmidt(normalize(rand(3)), normalize(r_ij))
+    end
     ΔΘ = LinRange(Δθ_in, Δθ_out, nsteps)
     for (i, θ) in enumerate(ΔΘ)
         R_left = AngleAxis(θ / 2 * π / 180.0, n[1], n[2], n[3])

@@ -94,6 +94,7 @@ function write_multi_input_file_fragments(
     fragment_multiplicities::Vector{Int},
     append::Bool=true
 )
+    @assert sum(fragment_charges) == charge "Invalid input: sum of fragment charges doesn not equal total charge."
     mode = "a"
     if !append
         mode = "w"
@@ -462,6 +463,49 @@ endfixed
 "
 end
 
+function optimize_then_harmonic_analysis_input()
+    return "\$rem
+  JOBTYPE opt
+  method wB97M-V
+  BASIS aug-cc-pVDZ
+  XC_GRID 000099000590
+  NL_GRID 1
+  UNRESTRICTED FALSE
+  MAX_SCF_CYCLES 200
+  SYMMETRY FALSE
+  SYM_IGNORE TRUE
+  MEM_STATIC 2000
+  BASIS_LIN_DEP_THRESH 8
+  THRESH 14
+  SCF_CONVERGENCE 8
+\$end\n
+
+@@@
+
+\$molecule
+read
+\$end
+
+\$rem
+  JOBTYPE freq
+  method wB97M-V
+  BASIS aug-cc-pVDZ
+  SCF_GUESS read
+  XC_GRID 000099000590
+  NL_GRID 1
+  UNRESTRICTED FALSE
+  MAX_SCF_CYCLES 200
+  SYMMETRY FALSE
+  SYM_IGNORE TRUE
+  MEM_STATIC 2000
+  BASIS_LIN_DEP_THRESH 8
+  THRESH 14
+  SCF_CONVERGENCE 8
+\$end\n
+
+"
+end
+
 function wb97xv_qzvppd_rem()
     return "\$rem
   mem_total  16000
@@ -484,6 +528,26 @@ function wb97xv_qzvppd_rem()
   internal_stability      false
   complex                 false
   chelpg true
+\$end
+"
+end
+
+function wb97xv_tzvppd_opt()
+    return "\$rem
+  mem_total  16000
+  jobtype                 opt
+  method                  wB97X-V
+  unrestricted            false
+  basis                   def2-tzvppd
+  scf_algorithm           gdm
+  scf_max_cycles          500
+  GEOM_OPT_MAX_CYCLES     300
+  scf_convergence         7
+  thresh                  14
+  symmetry                0
+  sym_ignore              1
+  gen_scfman              true
+  gen_scfman_final        true
 \$end
 "
 end

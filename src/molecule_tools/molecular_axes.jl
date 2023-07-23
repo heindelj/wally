@@ -27,6 +27,14 @@ function rotate_coords_around_axis_by_angle(coords::AbstractMatrix, axis::Abstra
     return coords
 end
 
+"""
+Generates a vector orthogonal to e, which we normalize just to be safe.
+"""
+function gram_schmidt(guess_vector::Vector{Float64}, e::Vector{Float64})
+    e = normalize(e)
+    return normalize(guess_vector - guess_vector ⋅ e * e)
+end
+
 function align_vector_to_axis(src_axis::AbstractVector, target_axis::AbstractVector)
 	"""
 	Takes a source axis, some 3-D vector, and returns the rotation matrix
@@ -170,7 +178,3 @@ end
 function kabsch_rmsd(P::AbstractArray{T}, Q::AbstractArray{T}) where T <: Real
     return rmsd(P,kabsch(P,Q))
 end
-
-A = [[ 0.84305,   1.79893,    0.521059] [ 1.61653,   1.24596,    0.316728] [ 1.17692,   2.66457,    0.740568] [-0.730885,  0.553893,  -1.56561 ]]
-R = rand(RotMatrix{3})
-@test kabsch(A, R * A) ≈ A
