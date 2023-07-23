@@ -22,13 +22,15 @@ function parse_lammps_trajectory(infile::String, type_to_label::Union{Dict{Int, 
         if parse_geom
             for j in 1:natoms
                 split_line = split(lines[i-1+j])
-                if length(split_line) != 5 || length(split_line) != 8
-                    @warn "Failed to parse a frame in lammps file. Skipping and moving to next frame."
-                    i += 1
-                    pop!(atom_types)
-                    pop!(coords)
-                    parse_geom = false
-                    @goto skip_frame
+                if length(split_line) != 5
+                    if length(split_line) != 8
+                        @warn "Failed to parse a frame in lammps file. Skipping and moving to next frame."
+                        i += 1
+                        pop!(atom_types)
+                        pop!(coords)
+                        parse_geom = false
+                        @goto skip_frame
+                    end
                 end
                 atom_type = tryparse(Int, split_line[1])
                 new_coords = [tryparse(Float64, split_line[3]), tryparse(Float64, split_line[4]), tryparse(Float64, split_line[5])]

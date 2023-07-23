@@ -137,12 +137,12 @@ function find_n_nearest_neighbors(cluster::Cluster, center_index::Int, n::Int, s
 end
 
 """
-Finds the n nearest neighbors for an index.
+Finds the neighbors within a certain range for an index.
 The center_index is the index for the cluster, not the geometry
 from which the cluster is derived. So, the easiest way to get the
 index is by looking up based on the molecular formula.
 Range is a distance in the same units as that of the cluster.
-Excluded indices will the centers in the provided array.
+Excluded indices will exclude the centers in the provided array.
 This is useful if you want to find the neighbors in a sub-cluster
 you already have without including the neighbors in that sub-cluster.
 """
@@ -332,6 +332,53 @@ function sample_random_clusters_within_range(
     return all_sample_metadata, all_sampled_labels, all_sampled_geoms, all_environment_labels, all_environment_geoms
 end
 
+function sample_random_clusters_with_n_neighbors(
+    geoms::AbstractVector{Matrix{Float64}},
+    labels::AbstractVector{Vector{String}},
+    chemical_formula::Vector{String},
+    num_neighbors::Int,
+    number_of_clusters_to_sample::Int,
+    skip_first_n_frames::Int=0
+)
+    num_frames = length(geoms)
+    @assert skip_first_n_frames < num_frames "You requested we skip $skip_first_n_frames but there are only $num_frames frames."
+
+    fragment_charges = Dict(
+        ["O", "H", "H"] => 0,
+        ["O", "H"] => -1,
+        ["Cl"]     => -1,
+        ["I"]      => -1,
+        ["Na"]     =>  1,
+    )
+
+    all_sampled_geoms = Matrix{Float64}[]
+    all_sampled_labels = Vector{String}[]
+    all_environment_geoms = Matrix{Float64}[]
+    all_environment_labels = Vector{String}[]
+    all_sample_metadata = Tuple{Int, Int, Int}[]
+
+    frame_indices = rand((skip_first_n_frames+1):num_frames, number_of_clusters_to_sample)
+    cluster_charge = fragment_charges[chemical_formula]
+    lk = ReentrantLock()
+    Threads.@threads for i_temp in ProgressBar(eachindex(frame_indices))
+        i_frame = frame_indices[i_temp]
+        cluster = build_cluster(geoms[i_frame], labels[i_frame])
+        center_indices = molecules_by_formula(cluster, chemical_formula)
+        cluster_sample = rand(1:length(center_indices), 1)[1] # This returns a vector, so just get the Int
+        cluster_labels, cluster_geoms, env_labels, env_geoms = find_n_nearest_neighbors(cluster, cluster_sample, num_neighbors)
+        lock(lk) do
+            push!(all_sampled_labels, cluster_labels)
+            push!(all_sampled_geoms, cluster_geoms)
+            push!(all_environment_labels, env_labels)
+            push!(all_environment_geoms, env_geoms)
+            push!(all_sample_metadata, (i_frame, cluster_sample, cluster_charge))
+            
+            @assert length(all_sampled_labels[end]) + length(all_environment_labels[end]) == length(labels[i_frame])
+        end
+    end
+    return all_sample_metadata, all_sampled_labels, all_sampled_geoms, all_environment_labels, all_environment_geoms
+end
+
 function locate_shells_near_cluster(cluster_coords::Matrix{Float64}, shell_coords::Matrix{Float64}, cluster_charge::Int)
     full_coords = hcat(cluster_coords, shell_coords)
     num_cluster_atoms = size(cluster_coords, 2)
@@ -474,6 +521,68 @@ function write_random_samples_within_range(
             radius,
             expand_sample_if_fragment_found,
             expansion_radius,
+            num_samples,
+            skip_first_n_frames
+        )
+
+        sampled_metadata, sampled_labels, sampled_geoms, environment_labels, environment_geoms = output
+
+        # sort the sampled cluster so that hydroxide is at the top #
+        for i in eachindex(sampled_geoms)
+            sorted_labels, sorted_coords = sort_water_cluster(sampled_geoms[i], sampled_labels[i])
+            sampled_labels[i] = sorted_labels
+            sampled_geoms[i] = sorted_coords
+        end
+
+        write_xyz(
+            string(outfile_prefix, ".xyz"),
+            [string(length(sampled_labels[i]), "\n", "Frame: ", sampled_metadata[i][1], " Center: ", sampled_metadata[i][2]) for i in eachindex(sampled_labels)],
+            sampled_labels,
+            sampled_geoms,
+            append=true
+        )
+
+        # sort the sampled environment so that hydroxide is at the top #
+        for i in eachindex(environment_geoms)
+            sorted_labels, sorted_coords = sort_water_cluster(environment_geoms[i], environment_labels[i])
+            environment_labels[i] = sorted_labels
+            environment_geoms[i] = sorted_coords
+        end
+
+        write_xyz(
+            string(outfile_prefix, "_environment.xyz"),
+            [string(length(environment_labels[i]), "\n", "Frame: ", sampled_metadata[i][1], " Center: ", sampled_metadata[i][2]) for i in eachindex(environment_labels)],
+            environment_labels,
+            environment_geoms,
+            append=true
+        )
+    end
+end
+
+function write_random_samples_with_n_neighbors(
+    outfile_prefix::String,
+    geoms::AbstractVector{Matrix{Float64}},
+    labels::AbstractVector{Vector{String}},
+    chemical_formula::Vector{String},
+    num_neighbors::Int,
+    number_of_clusters_to_sample::Int,
+    skip_first_n_frames::Int=0
+)
+    extra_samples = number_of_clusters_to_sample - (number_of_clusters_to_sample ÷ 100) * 100
+    # start from zero so we always enter the loop once
+    for i in 0:(number_of_clusters_to_sample ÷ 100)
+        num_samples = 100
+        if i == (number_of_clusters_to_sample ÷ 100)
+            num_samples = extra_samples
+            if extra_samples == 0
+                break
+            end
+        end
+        output = sample_random_clusters_with_n_neighbors(
+            geoms,
+            labels,
+            chemical_formula,
+            num_neighbors,
             num_samples,
             skip_first_n_frames
         )
