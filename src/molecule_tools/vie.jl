@@ -4,7 +4,7 @@ include("covalent_radii.jl")
 include("molecular_axes.jl")
 include("read_xyz.jl")
 include("water_tools.jl")
-include("nwchem_input_generator.jl")
+include("qchem_input_generator.jl")
 include("molecular_cluster.jl")
 
 function generate_cgem_optimization_script()
@@ -213,6 +213,32 @@ mem_static 16000
             writedlm(io, readdlm(string("sampled_geoms_and_optimized_shells/cluster_sample_", i_sample, "_shell_positions_anion.txt")))
             write(io, "\$end\n\n")
         end
+    end
+end
+
+function write_input_files_for_water_average_energy(
+    infile_prefix::String,
+    sampled_geometries_files::String
+)
+    rem_input_string_gas_phase = "\$rem
+jobtype                 sp
+method                  wB97M-V
+unrestricted            1
+basis                   aug-cc-pvdz
+xc_grid        2
+scf_max_cycles          500
+scf_convergence         6
+thresh                  14
+s2thresh 14
+symmetry                0
+sym_ignore              1
+mem_total 256000
+mem_static 16000
+\$end"
+    header, labels, geoms = read_xyz(sampled_geometries_files)
+    mkpath("qchem_input_files_enthalpy")
+    for i in eachindex(geoms)
+        write_input_file(string("qchem_input_files_enthalpy/", infile_prefix, "_sample_", i, ".in"), geoms[i], labels[i], rem_input_string_gas_phase, 0, 1)
     end
 end
 
