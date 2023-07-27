@@ -334,6 +334,82 @@ mem_static 16000
     end
 end
 
+function write_dimer_inputs_for_non_electrostatic_enthalpy_contribution(
+    qchem_infile_name::String,
+    cluster_file::String,
+    env_file::String,
+    center_index::Int=1,
+    dimer_sampling_radius::Float64=12.0
+)
+
+    atom_charges = Dict(
+        "O"   => -2,
+        "H"   =>  1,
+    )
+
+    _, cluster_labels, cluster_geoms = read_xyz(cluster_file)
+    _, env_labels, env_geoms = read_xyz(env_file)
+
+    cluster_labels = cluster_labels[1]
+    cluster_geom = cluster_geoms[1]
+    env_labels = env_labels[1]
+    env_geom = env_geoms[1]
+
+    solvating_cluster = build_cluster(cluster_geom, cluster_labels)
+    total_cluster     = build_cluster(hcat(cluster_geom, env_geom), vcat(cluster_labels, env_labels))
+
+    neighbor_indices = find_neighbors_within_range(total_cluster, center_index, dimer_sampling_radius)
+    
+    # exclude indices in the explicit solvent
+    dimer_indices = setdiff(neighbor_indices, 1:length(solvating_cluster.indices))
+
+    rem_string = "\$rem
+JOBTYPE eda
+SCFMI_FREEZE_SS 2
+FRZ_ORTHO_DECOMP -1
+EDA_CLS_DISP 1
+method wB97M-V
+BASIS aug-cc-pvtz
+XC_GRID 000099000590
+NL_GRID 1
+UNRESTRICTED FALSE
+MAX_SCF_CYCLES 200
+SYMMETRY FALSE
+SYM_IGNORE TRUE
+mem_total  16000
+BASIS_LIN_DEP_THRESH 14
+THRESH 14
+SCF_CONVERGENCE 8
+SCF_PRINT_FRGM TRUE
+\$end"
+
+    center_geom = total_cluster.geom[:, total_cluster.indices[center_index]]
+    center_labels = total_cluster.labels[total_cluster.indices[center_index]]
+    center_charge = sum([atom_charges[label] for label in cluster_labels])
+    center_geom_string = geometry_to_string(center_geom, center_labels)
+    open(qchem_infile_name, "w") do io
+        for i in eachindex(dimer_indices)
+            neighbor_geom = total_cluster.geom[:, total_cluster.indices[dimer_indices[i]]]
+            neighbor_labels = total_cluster.labels[total_cluster.indices[dimer_indices[i]]]
+            neighbor_charge = sum([atom_charges[label] for label in neighbor_labels])
+            neighbor_geom_string = geometry_to_string(neighbor_geom, neighbor_labels)
+
+            write(io, "\$molecule\n")
+            write(io, string(neighbor_charge + center_charge, " 1\n--\n"))
+            write(io, string(center_charge, " 1\n"))
+            write(io, center_geom_string)
+            write(io, string("--\n", neighbor_charge, " 1\n"))
+            write(io, neighbor_geom_string)
+            write(io, "\$end\n\n")
+            write(io, rem_string)
+
+            if i < length(dimer_indices)
+                write(io, "\n\n@@@\n\n")
+            end
+        end
+    end
+end
+
 function write_input_files_for_vie_nwchem(
     nwchem_infile_prefix::String,
     num_samples::Int
