@@ -256,80 +256,96 @@ function generate_ion_pair_scan_inputs()
 
     mkpath("ion_pair_scans")
     # same ion monovalent cations
-    for cation in monovalent_cations
-        geom = zeros(3, 2)
-        geom[1, 2] = initial_distances[Symbol(cation, cation)]
-        scan_geoms = distance_scan(geom, (1, 2), -0.6, 5.4, 51)
-        write_multi_input_file_fragments(
-            string("ion_pair_scans/", cation, "_", cation, "_scan_wb97xv_eda.in"),
-            scan_geoms, [cation, cation], eda_input(),
-            2, 1, [[1], [2]], [1, 1], [1, 1]
-        )
-    end
+    #for cation in monovalent_cations
+    #    geom = zeros(3, 2)
+    #    geom[1, 2] = initial_distances[Symbol(cation, cation)]
+    #    scan_geoms = distance_scan(geom, (1, 2), -0.6, 5.4, 51)
+    #    write_multi_input_file_fragments(
+    #        string("ion_pair_scans/", cation, "_", cation, "_scan_wb97xv_eda.in"),
+    #        scan_geoms, [cation, cation], eda_input(),
+    #        2, 1, [[1], [2]], [1, 1], [1, 1]
+    #    )
+    #end
 
     # same ion divalent cations
-    for cation in divalent_cations
-        geom = zeros(3, 2)
-        geom[1, 2] = initial_distances[Symbol(cation, cation)]
-        scan_geoms = distance_scan(geom, (1, 2), -0.6, 5.4, 61)
-        write_multi_input_file_fragments(
-            string("ion_pair_scans/", cation, "_", cation, "_scan_wb97xv_eda.in"),
-            scan_geoms, [cation, cation], eda_input(),
-            4, 1, [[1], [2]], [2, 2], [1, 1]
-        )
-    end
+    #for cation in divalent_cations
+    #    geom = zeros(3, 2)
+    #    geom[1, 2] = initial_distances[Symbol(cation, cation)]
+    #    scan_geoms = distance_scan(geom, (1, 2), -0.6, 5.4, 61)
+    #    write_multi_input_file_fragments(
+    #        string("ion_pair_scans/", cation, "_", cation, "_scan_wb97xv_eda.in"),
+    #        scan_geoms, [cation, cation], eda_input(),
+    #        4, 1, [[1], [2]], [2, 2], [1, 1]
+    #    )
+    #end
 
     # same ion anions
-    for anion in anions
-        geom = zeros(3, 2)
-        geom[1, 2] = initial_distances[Symbol(anion, anion)]
-        scan_geoms = distance_scan(geom, (1, 2), -0.6, 5.4, 61)
-        write_multi_input_file_fragments(
-            string("ion_pair_scans/", anion, "_", anion, "_scan_wb97xv_eda.in"),
-            scan_geoms, [anion, anion], eda_input(),
-            -2, 1, [[1], [2]], [-1, -1], [1, 1]
-        )
-    end
+    #for anion in anions
+    #    geom = zeros(3, 2)
+    #    geom[1, 2] = initial_distances[Symbol(anion, anion)]
+    #    scan_geoms = distance_scan(geom, (1, 2), -0.6, 5.4, 61)
+    #    write_multi_input_file_fragments(
+    #        string("ion_pair_scans/", anion, "_", anion, "_scan_wb97xv_eda.in"),
+    #        scan_geoms, [anion, anion], eda_input(),
+    #        -2, 1, [[1], [2]], [-1, -1], [1, 1]
+    #    )
+    #end
 
     # anion monovalent cation
-    for cation in monovalent_cations
-        for anion in anions
-            geom = zeros(3, 2)
-            geom[1, 2] = initial_distances[Symbol(cation, anion)]
-            scan_geoms = distance_scan(geom, (1, 2), -0.6, 5.4, 61)
-            write_multi_input_file_fragments(
-                string("ion_pair_scans/", cation, "_", anion, "_scan_wb97xv_eda.in"),
-                scan_geoms, [cation, anion], eda_input(),
-                0, 1, [[1], [2]], [1, -1], [1, 1]
-            )
-        end
-    end
+    #for cation in monovalent_cations
+    #    for anion in anions
+    #        geom = zeros(3, 2)
+    #        geom[1, 2] = initial_distances[Symbol(cation, anion)]
+    #        scan_geoms = distance_scan(geom, (1, 2), -0.6, 5.4, 61)
+    #        write_multi_input_file_fragments(
+    #            string("ion_pair_scans/", cation, "_", anion, "_scan_wb97xv_eda.in"),
+    #            scan_geoms, [cation, anion], eda_input(),
+    #            0, 1, [[1], [2]], [1, -1], [1, 1]
+    #        )
+    #    end
+    #end
 
     # anion divalent cation
-    for cation in divalent_cations
-        for anion in anions
-            geom = zeros(3, 2)
-            geom[1, 2] = initial_distances[Symbol(cation, anion)]
-            scan_geoms = distance_scan(geom, (1, 2), -0.6, 5.4, 61)
-            write_multi_input_file_fragments(
-                string("ion_pair_scans/", cation, "_", anion, "_scan_wb97xv_eda.in"),
-                scan_geoms, [cation, anion], eda_input(),
-                1, 1, [[1], [2]], [2, -1], [1, 1]
-            )
-        end
-    end
+    #for cation in divalent_cations
+    #    for anion in anions
+    #        geom = zeros(3, 2)
+    #        geom[1, 2] = initial_distances[Symbol(cation, anion)]
+    #        scan_geoms = distance_scan(geom, (1, 2), -0.6, 5.4, 61)
+    #        write_multi_input_file_fragments(
+    #            string("ion_pair_scans/", cation, "_", anion, "_scan_wb97xv_eda.in"),
+    #            scan_geoms, [cation, anion], eda_input(),
+    #            1, 1, [[1], [2]], [2, -1], [1, 1]
+    #        )
+    #    end
+    #end
 
     # monovalent cation divalent cation
-    for cation_1 in monovalent_cations
-        for cation_2 in divalent_cations
-            geom = zeros(3, 2)
-            geom[1, 2] = 0.5 * (initial_distances[Symbol(cation_1, cation_1)] + initial_distances[Symbol(cation_2, cation_2)])
-            scan_geoms = distance_scan(geom, (1, 2), -0.6, 5.4, 61)
-            write_multi_input_file_fragments(
-                string("ion_pair_scans/", cation_1, "_", cation_2, "_scan_wb97xv_eda.in"),
-                scan_geoms, [cation_1, cation_2], eda_input(),
-                3, 1, [[1], [2]], [1, 2], [1, 1]
-            )
+    #for cation_1 in monovalent_cations
+    #    for cation_2 in divalent_cations
+    #        geom = zeros(3, 2)
+    #        geom[1, 2] = 0.5 * (initial_distances[Symbol(cation_1, cation_1)] + initial_distances[Symbol(cation_2, cation_2)])
+    #        scan_geoms = distance_scan(geom, (1, 2), -0.6, 5.4, 61)
+    #        write_multi_input_file_fragments(
+    #            string("ion_pair_scans/", cation_1, "_", cation_2, "_scan_wb97xv_eda.in"),
+    #            scan_geoms, [cation_1, cation_2], eda_input(),
+    #            3, 1, [[1], [2]], [1, 2], [1, 1]
+    #        )
+    #    end
+    #end
+
+    # monovalent cation monovalent cation
+    for (i, cation_1) in enumerate(monovalent_cations)
+        for (j, cation_2) in enumerate(monovalent_cations)
+            if i < j
+                geom = zeros(3, 2)
+                geom[1, 2] = 0.5 * (initial_distances[Symbol(cation_1, cation_1)] + initial_distances[Symbol(cation_2, cation_2)])
+                scan_geoms = distance_scan(geom, (1, 2), -0.6, 5.4, 61)
+                write_multi_input_file_fragments(
+                    string("ion_pair_scans/", cation_1, "_", cation_2, "_scan_wb97xv_eda.in"),
+                    scan_geoms, [cation_1, cation_2], eda_input(),
+                    2, 1, [[1], [2]], [1, 1], [1, 1]
+                )
+            end
         end
     end
 end

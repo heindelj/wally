@@ -177,26 +177,19 @@ end
 function write_n_nearest_neighbors(geoms::AbstractVector{Matrix{Float64}}, labels::AbstractVector{Vector{String}}, chemical_formula::Vector{String}, n::Int, file_name::String="subclusters.xyz")
     labels_out = [Vector{String}[] for _ in 1:Threads.nthreads()]
     geoms_out = [Matrix{Float64}[] for _ in 1:Threads.nthreads()]
+
     Threads.@threads for i in ProgressBar(1:length(geoms))
         id = Threads.threadid()
         cluster = build_cluster(geoms[i], labels[i])
         labels_frame, geoms_frame = find_n_nearest_neighbors(cluster, chemical_formula, n)
-        append!(labels_out[id], labels_frame)
-        append!(geoms_out[id], geoms_frame)
-
-        if (i % 200) == 0
-            final_labels_out = Vector{String}[]
-            final_geoms_out = Matrix{Float64}[]
-            append!.((final_labels_out,), labels_out)
-            append!.((final_geoms_out,), geoms_out)
-            write_xyz(file_name, [string(length(final_labels_out[j]), "\n") for j in 1:length(final_labels_out)], final_labels_out, final_geoms_out)
-        end
+        push!(labels_out[id], labels_frame)
+        push!(geoms_out[id], geoms_frame)
     end
     final_labels_out = Vector{String}[]
     final_geoms_out = Matrix{Float64}[]
     append!.((final_labels_out,), labels_out)
     append!.((final_geoms_out,), geoms_out)
-    write_xyz(file_name, [string(length(final_labels_out[j]), "\n") for j in 1:length(final_labels_out)], final_labels_out, final_geoms_out)
+    write_xyz(file_name, final_labels_out, final_geoms_out)
 end
 
 function get_fragmented_geoms_and_labels(geoms::AbstractVector{Matrix{Float64}}, labels::AbstractVector{Vector{String}})
