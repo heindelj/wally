@@ -181,9 +181,13 @@ function write_n_nearest_neighbors(geoms::AbstractVector{Matrix{Float64}}, label
     Threads.@threads for i in ProgressBar(1:length(geoms))
         id = Threads.threadid()
         cluster = build_cluster(geoms[i], labels[i])
-        labels_frame, geoms_frame = find_n_nearest_neighbors(cluster, chemical_formula, n)
-        push!(labels_out[id], labels_frame)
-        push!(geoms_out[id], geoms_frame)
+        # get all indices corresponding to this chemical formula
+        center_indices = molecules_by_formula(cluster, chemical_formula)
+        for i_center in center_indices
+            labels_frame, geoms_frame = find_n_nearest_neighbors(cluster, i_center, n)
+            push!(labels_out[id], labels_frame)
+            push!(geoms_out[id], geoms_frame)
+        end
     end
     final_labels_out = Vector{String}[]
     final_geoms_out = Matrix{Float64}[]
