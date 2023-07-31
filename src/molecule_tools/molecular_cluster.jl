@@ -174,6 +174,11 @@ function find_n_nearest_neighbors(cluster::Cluster, chemical_formula::Vector{Str
     return find_n_nearest_neighbors(cluster, molecule_indices[center_index], n, sortres)
 end
 
+function write_n_nearest_neighbors(infile::String, chemical_formula::Vector{String}, n::Int, file_name::String="subclusters.xyz")
+    _, labels, geoms = read_xyz(infile)
+    write_n_nearest_neighbors(geoms, labels, chemical_formula, n, file_name)
+end
+
 function write_n_nearest_neighbors(geoms::AbstractVector{Matrix{Float64}}, labels::AbstractVector{Vector{String}}, chemical_formula::Vector{String}, n::Int, file_name::String="subclusters.xyz")
     labels_out = [Vector{String}[] for _ in 1:Threads.nthreads()]
     geoms_out = [Matrix{Float64}[] for _ in 1:Threads.nthreads()]
