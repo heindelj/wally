@@ -79,11 +79,11 @@ function set_up_shell_position_optimization_for_sampled_clusters_and_environment
         write_xyz(string("sampled_geoms_and_optimized_shells/cluster_sample_", i, ".xyz"), cluster_labels[i], cluster_geoms[i])
         write_xyz(string("sampled_geoms_and_optimized_shells/env_sample_", i, ".xyz"), env_labels[i], env_geoms[i])
     end
-    for i in eachindex(cluster_geoms)
-        smaller_cluster_labels, smaller_cluster_geom, extra_env_labels, extra_env_geom = find_n_nearest_neighbors(build_cluster(cluster_geoms[i], cluster_labels[i]), 1, 20)
-        write_xyz(string("sampled_geoms_and_optimized_shells/cluster_sample_mp2_", i, ".xyz"), smaller_cluster_labels, smaller_cluster_geom)
-        write_xyz(string("sampled_geoms_and_optimized_shells/env_sample_mp2_", i, ".xyz"), vcat(env_labels[i], extra_env_labels), hcat(env_geoms[i], extra_env_geom))
-    end
+    #for i in eachindex(cluster_geoms)
+    #    smaller_cluster_labels, smaller_cluster_geom, extra_env_labels, extra_env_geom = find_n_nearest_neighbors(build_cluster(cluster_geoms[i], cluster_labels[i]), 1, 20)
+    #    write_xyz(string("sampled_geoms_and_optimized_shells/cluster_sample_mp2_", i, ".xyz"), smaller_cluster_labels, smaller_cluster_geom)
+    #    write_xyz(string("sampled_geoms_and_optimized_shells/env_sample_mp2_", i, ".xyz"), vcat(env_labels[i], extra_env_labels), hcat(env_geoms[i], extra_env_geom))
+    #end
 end
 
 """
