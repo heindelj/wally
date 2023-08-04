@@ -376,18 +376,18 @@ function sample_random_clusters_with_n_neighbors(
         cluster_sample = rand(1:length(center_indices), 1)[1] # This returns a vector, so just get the Int
         try
             cluster_labels, cluster_geoms, env_labels, env_geoms = find_n_nearest_neighbors(cluster, cluster_sample, num_neighbors)
+            lock(lk) do
+                push!(all_sampled_labels, cluster_labels)
+                push!(all_sampled_geoms, cluster_geoms)
+                push!(all_environment_labels, env_labels)
+                push!(all_environment_geoms, env_geoms)
+                push!(all_sample_metadata, (i_frame, cluster_sample, cluster_charge))
+                
+                @assert length(all_sampled_labels[end]) + length(all_environment_labels[end]) == length(labels[i_frame])
+            end
         catch
             i_frame = pop!(extra_indices)
             @goto start
-        end
-        lock(lk) do
-            push!(all_sampled_labels, cluster_labels)
-            push!(all_sampled_geoms, cluster_geoms)
-            push!(all_environment_labels, env_labels)
-            push!(all_environment_geoms, env_geoms)
-            push!(all_sample_metadata, (i_frame, cluster_sample, cluster_charge))
-            
-            @assert length(all_sampled_labels[end]) + length(all_environment_labels[end]) == length(labels[i_frame])
         end
     end
     return all_sample_metadata, all_sampled_labels, all_sampled_geoms, all_environment_labels, all_environment_geoms
