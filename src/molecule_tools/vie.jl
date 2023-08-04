@@ -220,6 +220,10 @@ function write_input_files_for_water_average_energy(
     infile_prefix::String,
     sampled_geometries_files::String
 )
+
+# HERE: UPDATE TO INCLUDE COSMO SO THAT WE CAN GET SOLVATION CONTRIBUTION
+# TO CAVITATION! SHOULD JUST BE PURE WATER SO CAN ASSUME CLOSED SHELL NEUTRAL.
+
     rem_input_string_gas_phase = "\$rem
 jobtype                 sp
 method                  wB97M-V
@@ -234,7 +238,12 @@ symmetry                0
 sym_ignore              1
 mem_total 256000
 mem_static 16000
-\$end"
+SOLVENT_METHOD cosmo
+\$end
+
+\$pcm
+   Theory          cosmo
+\$end\n"
     header, labels, geoms = read_xyz(sampled_geometries_files)
     mkpath("qchem_input_files_enthalpy")
     for i in eachindex(geoms)
