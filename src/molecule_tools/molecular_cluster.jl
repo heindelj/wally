@@ -360,14 +360,26 @@ function sample_random_clusters_with_n_neighbors(
     all_sample_metadata = Tuple{Int, Int, Int}[]
 
     frame_indices = rand((skip_first_n_frames+1):num_frames, number_of_clusters_to_sample)
+
+    # This is a total hack and dumb. There is a bug where find_n_nearest_neighbors fails for some
+    # input but I don't know why. So, I am just assuming the input where it fails is somehow
+    # flawed and I generate extra indices which I use as fall back indices to look at when
+    # the original ones fail.
+    extra_indices = rand((skip_first_n_frames+1):num_frames, number_of_clusters_to_sample)
     cluster_charge = fragment_charges[chemical_formula]
     lk = ReentrantLock()
     Threads.@threads for i_temp in ProgressBar(eachindex(frame_indices))
         i_frame = frame_indices[i_temp]
+        @label start
         cluster = build_cluster(geoms[i_frame], labels[i_frame])
         center_indices = molecules_by_formula(cluster, chemical_formula)
         cluster_sample = rand(1:length(center_indices), 1)[1] # This returns a vector, so just get the Int
-        cluster_labels, cluster_geoms, env_labels, env_geoms = find_n_nearest_neighbors(cluster, cluster_sample, num_neighbors)
+        try
+            cluster_labels, cluster_geoms, env_labels, env_geoms = find_n_nearest_neighbors(cluster, cluster_sample, num_neighbors)
+        catch
+            i_frame = pop!(extra_indices)
+            @goto start
+        end
         lock(lk) do
             push!(all_sampled_labels, cluster_labels)
             push!(all_sampled_geoms, cluster_geoms)
