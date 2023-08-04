@@ -218,11 +218,9 @@ end
 
 function write_input_files_for_water_average_energy(
     infile_prefix::String,
-    sampled_geometries_files::String
+    sampled_geometries_files::String,
+    indices_to_exclude::Vector{Int}
 )
-
-# HERE: UPDATE TO INCLUDE COSMO SO THAT WE CAN GET SOLVATION CONTRIBUTION
-# TO CAVITATION! SHOULD JUST BE PURE WATER SO CAN ASSUME CLOSED SHELL NEUTRAL.
 
     rem_input_string_gas_phase = "\$rem
 jobtype                 sp
