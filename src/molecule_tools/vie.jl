@@ -246,7 +246,7 @@ SOLVENT_METHOD cosmo
     mkpath("qchem_input_files_enthalpy")
     for i in eachindex(geoms)
         cluster_labels = labels[setdiff(1:length(labels[i]), indices_to_exclude)]
-        cluster_geom   = geom[:, setdiff(1:size(geoms[i], 2), indices_to_exclude)]
+        cluster_geom   = geoms[i][:, setdiff(1:size(geoms[i], 2), indices_to_exclude)]
         write_input_file(string("qchem_input_files_enthalpy/", infile_prefix, "_sample_", i, ".in"), cluster_geom, cluster_labels, rem_input_string_gas_phase, 0, 1)
     end
 end
