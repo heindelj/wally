@@ -219,7 +219,7 @@ end
 function write_input_files_for_water_average_energy(
     infile_prefix::String,
     sampled_geometries_files::String,
-    indices_to_exclude::Vector{Int}
+    indices_to_exclude::Vector{Int}=Int[]
 )
 
     rem_input_string_gas_phase = "\$rem
