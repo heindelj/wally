@@ -254,7 +254,7 @@ SOLVENT_METHOD cosmo
     for i in eachindex(geoms)
         cluster_labels = labels[i][setdiff(1:length(labels[i]), indices_to_exclude)]
         cluster_geom   = geoms[i][:, setdiff(1:size(geoms[i], 2), indices_to_exclude)]
-        cluster_charge = sum([atom_charges[label] for label in cluster_labels[1]])
+        cluster_charge = sum([atom_charges[label] for label in cluster_labels])
         write_input_file(string("qchem_input_files_enthalpy/", infile_prefix, "_sample_", i, ".in"), cluster_geom, cluster_labels, rem_input_string_gas_phase, cluster_charge, 1)
     end
 end
