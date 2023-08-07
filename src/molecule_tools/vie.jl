@@ -396,14 +396,14 @@ mem_static 16000
             write(io, test_string)
             write(io, "\$end\n\n")
             write(io, rem_input_string_test_particle)
-            write(io, "\$end\n\n@@@\n\n")
+            write(io, "\n\n@@@\n\n")
 
             write(io, "\$molecule\n")
             write(io, string(0, " ", 1, "\n"))
             write(io, test_string)
             write(io, "\$end\n\n")
             write(io, rem_input_string_test_particle)
-            write(io, "\n\$external_charges\n")
+            write(io, "\n\n\$external_charges\n")
             writedlm(io, readdlm(string("sampled_geoms_and_optimized_shells/cluster_sample_", i_sample, "_shell_positions_anion.txt")))
             write(io, "\$end\n\n")
         end
