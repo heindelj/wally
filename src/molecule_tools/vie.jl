@@ -319,6 +319,21 @@ mem_total 256000
 mem_static 16000
 \$end"
 
+    rem_input_string_test_particle = "\$rem
+jobtype                 sp
+method                  wB97M-V
+basis                   cc-pvdz
+xc_grid        2
+scf_max_cycles          500
+scf_convergence         7
+thresh                  14
+s2thresh 14
+symmetry                0
+sym_ignore              1
+mem_total 256000
+mem_static 16000
+\$end"
+
     mkpath("qchem_input_files_enthalpy")
     @showprogress for i_sample in 1:num_samples
         if (
@@ -356,20 +371,37 @@ mem_static 16000
         end
 
         geom_string = geometry_to_string(cluster_geom[1], cluster_labels[1])
+        test_string = geometry_to_string(Matrix{Float64}([100000000.0, 100000000.0, 100000000.0,]), ["He"])
         # write anion file
-        open(string("qchem_input_files_enthalpy/", qchem_infile_prefix, "_no_solute_", i_sample, ".in"), "w") do io
+        open(string("qchem_input_files_enthalpy/", qchem_infile_prefix, "_", i_sample, ".in"), "w") do io
             write(io, "\$molecule\n")
             write(io, string(cluster_charge, " ", 1, "\n"))
             write(io, geom_string)
             write(io, "\$end\n\n")
             write(io, rem_input_string_gas_phase)
             write(io, string("\n\n\$basis\n", basis_string, "\$end\n\n@@@\n\n"))
+
             write(io, "\$molecule\n")
             write(io, string(cluster_charge, " ", 1, "\n"))
             write(io, geom_string)
             write(io, "\$end\n\n")
             write(io, rem_input_string_with_env)
             write(io, string("\n\n\$basis\n", basis_string, "\$end\n\n"))
+            write(io, "\n\$external_charges\n")
+            writedlm(io, readdlm(string("sampled_geoms_and_optimized_shells/cluster_sample_", i_sample, "_shell_positions_anion.txt")))
+            write(io, "\$end\n\n@@@\n\n")
+
+            write(io, "\$molecule\n")
+            write(io, string(0, " ", 1, "\n"))
+            write(io, geom_string)
+            write(io, "\$end\n\n")
+            write(io, rem_input_string_test_particle)
+            write(io, "\$end\n\n@@@\n\n")
+            write(io, "\$molecule\n")
+            write(io, string(0, " ", 1, "\n"))
+            write(io, geom_string)
+            write(io, "\$end\n\n")
+            write(io, rem_input_string_test_particle)
             write(io, "\n\$external_charges\n")
             writedlm(io, readdlm(string("sampled_geoms_and_optimized_shells/cluster_sample_", i_sample, "_shell_positions_anion.txt")))
             write(io, "\$end\n\n")
