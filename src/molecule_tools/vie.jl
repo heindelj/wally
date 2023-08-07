@@ -371,7 +371,7 @@ mem_static 16000
         end
 
         geom_string = geometry_to_string(cluster_geom[1], cluster_labels[1])
-        test_string = geometry_to_string(Matrix{Float64}([100000000.0, 100000000.0, 100000000.0,]), ["He"])
+        test_string = geometry_to_string(ones(3, 1) * 100000000.0, ["He"])
         # write anion file
         open(string("qchem_input_files_enthalpy/", qchem_infile_prefix, "_", i_sample, ".in"), "w") do io
             write(io, "\$molecule\n")
@@ -397,6 +397,7 @@ mem_static 16000
             write(io, "\$end\n\n")
             write(io, rem_input_string_test_particle)
             write(io, "\$end\n\n@@@\n\n")
+
             write(io, "\$molecule\n")
             write(io, string(0, " ", 1, "\n"))
             write(io, geom_string)
