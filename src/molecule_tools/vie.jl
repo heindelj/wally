@@ -393,14 +393,14 @@ mem_static 16000
 
             write(io, "\$molecule\n")
             write(io, string(0, " ", 1, "\n"))
-            write(io, geom_string)
+            write(io, test_string)
             write(io, "\$end\n\n")
             write(io, rem_input_string_test_particle)
             write(io, "\$end\n\n@@@\n\n")
 
             write(io, "\$molecule\n")
             write(io, string(0, " ", 1, "\n"))
-            write(io, geom_string)
+            write(io, test_string)
             write(io, "\$end\n\n")
             write(io, rem_input_string_test_particle)
             write(io, "\n\$external_charges\n")
