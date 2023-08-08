@@ -371,10 +371,10 @@ function sample_random_clusters_with_n_neighbors(
     Threads.@threads for i_temp in ProgressBar(eachindex(frame_indices))
         i_frame = frame_indices[i_temp]
         @label start
-        cluster = build_cluster(geoms[i_frame], labels[i_frame])
-        center_indices = molecules_by_formula(cluster, chemical_formula)
-        cluster_sample = rand(1:length(center_indices), 1)[1] # This returns a vector, so just get the Int
         try
+            cluster = build_cluster(geoms[i_frame], labels[i_frame])
+            center_indices = molecules_by_formula(cluster, chemical_formula)
+            cluster_sample = rand(1:length(center_indices), 1)[1] # This returns a vector, so just get the Int
             cluster_labels, cluster_geoms, env_labels, env_geoms = find_n_nearest_neighbors(cluster, center_indices[cluster_sample], num_neighbors)
             lock(lk) do
                 push!(all_sampled_labels, cluster_labels)
