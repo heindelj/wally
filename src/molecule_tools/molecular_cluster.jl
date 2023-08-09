@@ -126,7 +126,13 @@ function find_n_nearest_neighbors(cluster::Cluster, center_index::Int, n::Int, s
     if !isempty(env_indices)
         for i in eachindex(env_indices)
             total_indices = reduce(vcat, cluster.indices[env_indices[i]])
-            push!(labels_env, cluster.labels[total_indices])
+            if length(total_indices) > 1
+                push!(labels_env, cluster.labels[total_indices])
+            elseif length(total_indices) == 1
+                push!(labels_env, [cluster.labels[total_indices]])
+            else
+                @assert false "length(total_indices) == 0... Not sure what this means or if this is even reachable."
+            end
             for vec in eachcol(cluster.geom[:, total_indices])
                 push!(geoms_env, vec[:])
             end
