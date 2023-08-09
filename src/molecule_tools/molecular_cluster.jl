@@ -109,7 +109,7 @@ from which the cluster is derived. So, the easiest way to get these
 indices is by looking up based on the molecular formula.
 """
 function find_n_nearest_neighbors(cluster::Cluster, center_index::Int, n::Int, sortres::Bool=true; required_num_atoms::Union{Nothing, Int}=nothing)
-    nl = KDTree(cluster.centers)
+nl = KDTree(cluster.centers)
     neighbor_indices, _ = knn(nl, cluster.centers[center_index], n + 1, sortres) # the self of something is counted as a neighbor so add one to number requested
     labels_out = Vector{String}[]
     labels_env = Vector{String}[]
@@ -349,7 +349,8 @@ function sample_random_clusters_with_n_neighbors(
     chemical_formula::Vector{String},
     num_neighbors::Int,
     number_of_clusters_to_sample::Int,
-    skip_first_n_frames::Int=0
+    skip_first_n_frames::Int=0,
+    required_num_atoms::Union{Nothing, Int}=nothing
 )
     num_frames = length(geoms)
     @assert skip_first_n_frames < num_frames "You requested we skip $skip_first_n_frames but there are only $num_frames frames."
@@ -385,7 +386,7 @@ function sample_random_clusters_with_n_neighbors(
             cluster = build_cluster(geoms[i_frame], labels[i_frame])
             center_indices = molecules_by_formula(cluster, chemical_formula)
             cluster_sample = rand(1:length(center_indices), 1)[1] # This returns a vector, so just get the Int
-            cluster_labels, cluster_geoms, env_labels, env_geoms = find_n_nearest_neighbors(cluster, center_indices[cluster_sample], num_neighbors)
+            cluster_labels, cluster_geoms, env_labels, env_geoms = find_n_nearest_neighbors(cluster, center_indices[cluster_sample], num_neighbors, required_num_atoms=required_num_atoms)
             lock(lk) do
                 push!(all_sampled_labels, cluster_labels)
                 push!(all_sampled_geoms, cluster_geoms)
@@ -590,7 +591,8 @@ function write_random_samples_with_n_neighbors(
     chemical_formula::Vector{String},
     num_neighbors::Int,
     number_of_clusters_to_sample::Int,
-    skip_first_n_frames::Int=0
+    skip_first_n_frames::Int=0,
+    required_num_atoms::Union{Nothing, Int}=nothing
 )
     extra_samples = number_of_clusters_to_sample - (number_of_clusters_to_sample ÷ 100) * 100
     # start from zero so we always enter the loop once
@@ -608,7 +610,8 @@ function write_random_samples_with_n_neighbors(
             chemical_formula,
             num_neighbors,
             num_samples,
-            skip_first_n_frames
+            skip_first_n_frames,
+            required_num_atoms
         )
 
         sampled_metadata, sampled_labels, sampled_geoms, environment_labels, environment_geoms = output
