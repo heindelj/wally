@@ -349,7 +349,7 @@ function sample_random_clusters_with_n_neighbors(
     chemical_formula::Vector{String},
     num_neighbors::Int,
     number_of_clusters_to_sample::Int,
-    skip_first_n_frames::Int=0,
+    skip_first_n_frames::Int=0;
     required_num_atoms::Union{Nothing, Int}=nothing
 )
     num_frames = length(geoms)
@@ -591,7 +591,7 @@ function write_random_samples_with_n_neighbors(
     chemical_formula::Vector{String},
     num_neighbors::Int,
     number_of_clusters_to_sample::Int,
-    skip_first_n_frames::Int=0,
+    skip_first_n_frames::Int=0;
     required_num_atoms::Union{Nothing, Int}=nothing
 )
     extra_samples = number_of_clusters_to_sample - (number_of_clusters_to_sample ÷ 100) * 100
@@ -611,7 +611,7 @@ function write_random_samples_with_n_neighbors(
             num_neighbors,
             num_samples,
             skip_first_n_frames,
-            required_num_atoms
+            required_num_atoms=required_num_atoms
         )
 
         sampled_metadata, sampled_labels, sampled_geoms, environment_labels, environment_geoms = output
