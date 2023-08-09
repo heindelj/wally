@@ -346,6 +346,7 @@ function sample_random_clusters_with_n_neighbors(
     @assert skip_first_n_frames < num_frames "You requested we skip $skip_first_n_frames but there are only $num_frames frames."
 
     fragment_charges = Dict(
+        ["O", "H", "H", "H"] => 1,
         ["O", "H", "H"] => 0,
         ["O", "H"] => -1,
         ["Cl"]     => -1,
