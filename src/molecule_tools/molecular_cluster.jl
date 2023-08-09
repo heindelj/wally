@@ -124,7 +124,7 @@ nl = KDTree(cluster.centers)
         end
     end
     if required_num_atoms !== nothing
-        num_atoms_found = sum(length.(labels_out[end]))
+        num_atoms_found = length(reduce(vcat, labels_out))
         if num_atoms_found != required_num_atoms
             error("N nearest neighbors and center did not have $required_num_atoms as required.")
         end
