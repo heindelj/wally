@@ -108,7 +108,7 @@ The center_indices are the indices for the cluster, not the geometry
 from which the cluster is derived. So, the easiest way to get these
 indices is by looking up based on the molecular formula.
 """
-function find_n_nearest_neighbors(cluster::Cluster, center_index::Int, n::Int, sortres::Bool=true)
+function find_n_nearest_neighbors(cluster::Cluster, center_index::Int, n::Int, sortres::Bool=true; required_num_atoms::Union{Nothing, Int}=nothing)
     nl = KDTree(cluster.centers)
     neighbor_indices, _ = knn(nl, cluster.centers[center_index], n + 1, sortres) # the self of something is counted as a neighbor so add one to number requested
     labels_out = Vector{String}[]
@@ -122,6 +122,9 @@ function find_n_nearest_neighbors(cluster::Cluster, center_index::Int, n::Int, s
         for vec in eachcol(cluster.geom[:, total_indices])
             push!(geoms_out, vec[:])
         end
+    end
+    if required_num_atoms !== nothing && length(labels_out[end]) != required_num_atoms
+        error("N nearest neighbors and center did not have $required_num_atoms as required.")
     end
     if !isempty(env_indices)
         for i in eachindex(env_indices)
