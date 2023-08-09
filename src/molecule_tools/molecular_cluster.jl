@@ -123,8 +123,11 @@ nl = KDTree(cluster.centers)
             push!(geoms_out, vec[:])
         end
     end
-    if required_num_atoms !== nothing && length(labels_out[end]) != required_num_atoms
-        error("N nearest neighbors and center did not have $required_num_atoms as required.")
+    if required_num_atoms !== nothing
+        num_atoms_found = sum(length.(labels_out[end]))
+        if num_atoms_found != required_num_atoms
+            error("N nearest neighbors and center did not have $required_num_atoms as required.")
+        end
     end
     if !isempty(env_indices)
         for i in eachindex(env_indices)
