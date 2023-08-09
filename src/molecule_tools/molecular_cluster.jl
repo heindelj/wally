@@ -366,7 +366,7 @@ function sample_random_clusters_with_n_neighbors(
     # input but I don't know why. So, I am just assuming the input where it fails is somehow
     # flawed and I generate extra indices which I use as fall back indices to look at when
     # the original ones fail.
-    extra_indices = rand((skip_first_n_frames+1):num_frames, number_of_clusters_to_sample)
+    extra_indices = rand((skip_first_n_frames+1):num_frames, 3*number_of_clusters_to_sample)
     cluster_charge = fragment_charges[chemical_formula]
     lk = ReentrantLock()
     Threads.@threads for i_temp in ProgressBar(eachindex(frame_indices))
