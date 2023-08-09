@@ -139,6 +139,7 @@ function sort_water_cluster(coords::AbstractMatrix, labels::AbstractVector, to_a
     OH_indices = Int[]
     hydronium_indices = Int[]
     water_indices = Int[]
+    unsortable_indices = Int[]
     all_indices = Int[]
     for i in keys(O_neighbors)
         if length(O_neighbors[i]) == 1
@@ -151,15 +152,15 @@ function sort_water_cluster(coords::AbstractMatrix, labels::AbstractVector, to_a
             push!(hydronium_indices, i)
             append!(hydronium_indices, O_neighbors[i])
         else
-            println(i)
-            display(O_neighbors[i])
-            @assert false "Found a water with four hydrogen atoms or no hydrogen atoms. Exiting."
+            push!(unsortable_indices, i)
+            append!(unsortable_indices, O_neighbors[i])
         end
     end
 
     append!(all_indices, OH_indices)
     append!(all_indices, hydronium_indices)
     append!(all_indices, water_indices)
+    append!(all_indices, unsortable_indices)
 	
     unused_indices = setdiff([1:length(labels)...], all_indices)
     append!(all_indices, unused_indices)
