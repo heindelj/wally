@@ -545,7 +545,7 @@ end
 
 function perlmutter_fchk_slurm_script_string()
     return string("#!/bin/bash
-#SBATCH -A m4260
+#SBATCH -A m2101
 #SBATCH -t 12:00:00
 #SBATCH -q regular
 #SBATCH -C cpu

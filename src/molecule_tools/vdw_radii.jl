@@ -8,7 +8,7 @@ function vdw_radius(atom_label::String)
                  "B"   => 1.92,
                  "C"   => 1.70,
                  "N"   => 1.55,
-                 "O"  => 1.52, 
+                 "O"  => 1.52,
                  "F"   => 1.47,
                  "Ne"  => 1.54,
                  "Na"  => 1.02,

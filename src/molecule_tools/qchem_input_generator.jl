@@ -343,6 +343,24 @@ function eda_input()
 \$end\n"
 end
 
+function bsse_input()
+    return "\$rem
+  jobtype                 bsse
+  method                  wB97M-V
+  unrestricted            1
+  basis                   aug-cc-pvdz
+  xc_grid        2
+  scf_max_cycles          500
+  scf_convergence         6
+  thresh                  14
+  s2thresh 14
+  symmetry                0
+  sym_ignore              1
+  mem_total 256000
+  mem_static 16000
+\$end"
+end
+
 function fda_input()
     return "\$rem
   JOBTYPE FORCE
