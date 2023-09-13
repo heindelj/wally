@@ -508,7 +508,7 @@ function perlmutter_slurm_script_string(infile_prefix::AbstractString, batch_num
     index_end = index_start + num_per_batch - 1
     full_file = string(infile_prefix, "_batch_", batch_number)
     return string("#!/bin/bash
-#SBATCH -A m4260
+#SBATCH -A m2101
 #SBATCH -t 12:00:00
 #SBATCH -q regular
 #SBATCH -C cpu
