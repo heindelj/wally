@@ -460,7 +460,7 @@ function write_xyz_and_csv_from_EDA_calculation(eda_job_output_file::String, csv
         :ct => Float64[],
         :int => Float64[],
     )
-        
+
     # get EDA data from output files
     parse_EDA_terms!(eda_data, eda_job_output_file)
     # populate interaction energy key

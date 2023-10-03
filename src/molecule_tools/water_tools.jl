@@ -347,7 +347,7 @@ function get_array_of_waters(coords::AbstractMatrix, labels::AbstractVector; to_
     """
     @assert isinteger(size(coords, 2) / 3) "Number of atoms not divisble by 3. Is this water?"
     new_coords = Array{typeof(coords), 1}(undef, size(coords, 2) ÷ 3)
-    coords = sort_waters(coords, labels, to_angstrom=to_angstrom)
+    labels, coords = sort_water_cluster(coords, labels, to_angstrom)
 
     for i in 1:(size(coords, 2) ÷ 3)
         new_coords[i] = coords[:, ((i-1)*3 + 1):(i*3)]
