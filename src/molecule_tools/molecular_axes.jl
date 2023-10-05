@@ -162,8 +162,7 @@ function kabsch(ref_coords::AbstractArray{T,2}, coords::AbstractArray{T,2}) wher
     m::Array{Int64,2} = [1 0 0; 0 1 0; 0 0 f]
 
     # Calculate the optimal rotation matrix _and_ superimpose it
-    return broadcast(+, *(centered_coords, u, m, vt'), centroid(ref_coords')')'
-
+    return broadcast(+, centered_coords * (u  * m * vt'), centroid(ref_coords')')'
 end
 
 function kabsch(ref_coords::AbstractVector{T}, coords::AbstractVector{T}) where T <: Real
