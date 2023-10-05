@@ -328,7 +328,7 @@ function write_eda_and_charge_data_to_csv(csv_out_file::String, eda_file::String
     CSV.write(csv_out_file, df)
 end
 
-function parse_xyz_and_eda_from_output!(infile::String, eda_dict::Dict{Symbol, Vector{Float64}})
+function parse_xyz_and_eda_from_output!(infile::String, eda_dict::Dict{Symbol, Vector{Float64}}, parse_fragment_energies::Bool=true, fragment_zero::Float64=0.0)
     lines = readlines(infile)
 
     labels = String[]
