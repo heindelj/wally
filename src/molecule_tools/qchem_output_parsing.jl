@@ -328,16 +328,29 @@ function write_eda_and_charge_data_to_csv(csv_out_file::String, eda_file::String
     CSV.write(csv_out_file, df)
 end
 
-function parse_xyz_from_EDA_input(infile::String)
+function parse_xyz_and_eda_from_output!(infile::String, eda_dict::Dict{Symbol, Vector{Float64}})
     lines = readlines(infile)
+
     labels = String[]
     coords = Vector{Float64}[]
+    pending_coords = Matrix{Float64}()
+    pending_labels = String[]
     final_labels = Vector{String}[]
     final_coords = Matrix{Float64}[]
+
+    successfully_parsed_coords = false
+    successfully_parsed_eda    = false
+
     in_molecule_block = false
     found_fragment_separator = false
-    for line in lines
+    for (i, line) in enumerate(lines)
         if in_molecule_block
+            if successfully_parsed_coords
+                # we can only get here if we parsed some coordinates
+                # but then failed to find eda terms corresponding to
+                # that geometry
+                successfully_parsed_coords = false
+            end
             split_line = split(line)
             if length(split_line) == 4 && found_fragment_separator
                 if all(isletter, strip(split_line[1], ('+', '-')))
@@ -358,20 +371,69 @@ function parse_xyz_from_EDA_input(infile::String)
         end
         if occursin("\$end", line) && in_molecule_block
             if found_fragment_separator
-                push!(final_labels, labels)
-                push!(final_coords, reduce(hcat, coords))
+                # If we get here, we successfully parsed a geometry.
+                # We then store these coordinates and labels in the 
+                # pending and say we should keep this geometry if we
+                # successfully parsed some coordinates and
+                # later successfully parse eda values.
+                pending_labels = copy(labels)
+                pending_coords = reduce(hcat, coords)
+                successfully_parsed_coords = true
+
+                #push!(final_labels, labels)
+                #push!(final_coords, reduce(hcat, coords))
             end
             in_molecule_block = false
             found_fragment_separator = false
             labels = String[]
             coords = Vector{Float64}[]
         end
-        if occursin("fatal error", line) && !in_molecule_block
-            @warn string("Found failed job corresponding to job input ", length(final_labels), ". Throwing away the geometry and continuing.")
-            pop!(final_labels)
-            pop!(final_coords)
+        if occursin("(ELEC)", line) && haskey(eda_dict, :elec)
+            push!(eda_dict[:elec], tryparse(Float64, split(line)[5]))
+        elseif occursin("(PAULI)", line) && haskey(eda_dict, :pauli)
+            push!(eda_dict[:pauli], tryparse(Float64, split(line)[5]))
+        elseif occursin("E_disp   (DISP)", line) && haskey(eda_dict, :disp)
+            push!(eda_dict[:disp], tryparse(Float64, split(line)[5]))
+        elseif occursin("E_cls_disp  (CLS DISP)", line) && haskey(eda_dict, :disp)
+            push!(eda_dict[:disp], tryparse(Float64, split(line)[6]))
+        elseif occursin("(CLS ELEC)", line) && haskey(eda_dict, :cls_elec)
+            push!(eda_dict[:cls_elec], tryparse(Float64, split(line)[6]))
+        elseif occursin("(MOD PAULI)", line) && haskey(eda_dict, :mod_pauli)
+            push!(eda_dict[:mod_pauli], tryparse(Float64, split(line)[6]))
+        elseif occursin("POLARIZATION", line) && haskey(eda_dict, :pol)
+            push!(eda_dict[:pol], tryparse(Float64, split(line)[2]))
+        elseif occursin("CHARGE TRANSFER", line) && haskey(eda_dict, :ct)
+            push!(eda_dict[:ct], tryparse(Float64, split(line)[3]))
+            successfully_parsed_eda = true
+        elseif occursin("Fragment Energies", line)
+            if parse_fragment_energies && haskey(eda_dict, :deform)
+                index = copy(i+1)
+                fragment_sum = 0.0
+                num_fragments = 0
+                while !occursin("--------", lines[index])
+                    fragment_sum += tryparse(Float64, split(lines[index])[2])
+                    index += 1
+                    num_fragments += 1
+                end
+                push!(eda_dict[:deform], (fragment_sum - num_fragments * fragment_zero) * 627.51 * 4.184)
+            end
+        end
+        #if occursin("fatal error", line) && !in_molecule_block
+        #    @warn string("Found failed job corresponding to job input ", length(final_labels), ". Throwing away the geometry and continuing.")
+        #    pop!(final_labels)
+        #    pop!(final_coords)
+        #end
+        if successfully_parsed_coords && successfully_parsed_eda
+            # commit parsed data and reset state
+            push!(final_labels, pending_labels)
+            push!(final_coords, pending_coords)
+            successfully_parsed_coords = false
+            successfully_parsed_eda    = false
         end
     end
+    num_labels = length(final_labels)
+    num_eda_terms = length(eda_dict[:ct]) 
+    @assert length(final_labels) == length(eda_dict[:ct]) "Number of parsed geometries ($num_labels) and nummber of parsed eda terms ($num_eda_terms) aren't equal! Something went wrong with parsing."
     return final_labels, final_coords
 end
 

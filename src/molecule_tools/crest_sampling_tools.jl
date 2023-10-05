@@ -86,3 +86,4 @@ function identify_and_write_unique_geoms(xyz_outfile::String, energy_threshold::
 
     write_xyz(xyz_outfile, [string(length(all_labels[indices_to_keep][i]), "\n", all_energies[indices_to_keep][i]) for i in eachindex(all_labels[indices_to_keep])], all_labels[indices_to_keep], all_geoms[indices_to_keep])
 end
+

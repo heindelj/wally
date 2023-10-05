@@ -101,7 +101,7 @@ function number_of_hydrogen_bonds(coords::Vector{Matrix{Float64}})
     return number_of_hydrogen_bonds_in_each_frame
 end
 
-function sort_water_cluster(coords::AbstractMatrix, labels::AbstractVector, to_angstrom::Bool = false; return_permutation::Bool = false)
+function sort_water_cluster(coords::AbstractMatrix, labels::AbstractVector, to_angstrom::Bool = false; return_permutation::Bool = false, return_as_fragments::Bool=false)
     """
     Sorts water clusters containing water, hydroxide, or hydronium
 	and puts H3O+ and OH- first. Then OHH sorted water. Then any other
@@ -157,10 +157,32 @@ function sort_water_cluster(coords::AbstractMatrix, labels::AbstractVector, to_a
         end
     end
 
+    if return_as_fragments
+        fragment_labels = Vector{String}[]
+        fragment_coords = Matrix{Float64}[]
+        for i in 1:2:length(OH_indices)
+            push!(fragment_labels, labels[OH_indices[i], OH_indices[i+1]])
+            push!(fragment_coords, coords[:, [OH_indices[i], OH_indices[i+1]]])
+        end
+        for i in 1:4:length(hydronium_indices)
+            push!(fragment_labels, labels[hydronium_indices[i], hydronium_indices[i+1], hydronium_indices[i+2], hydronium_indices[i+3]])
+            push!(fragment_coords, coords[:, [hydronium_indices[i], hydronium_indices[i+1], hydronium_indices[i+2], hydronium_indices[i+3]]])
+        end
+        for i in eachindex(unsortable_indices)
+            push!(fragment_labels, labels[unsortable_indices[i]])
+            push!(fragment_coords, coords[:, unsortable_indices[i]])
+        end
+        for i in 1:3:length(water_indices)
+            push!(fragment_labels, labels[water_indices[i], water_indices[i+1], water_indices[i+2]])
+            push!(fragment_coords, coords[:, [water_indices[i], water_indices[i+1], water_indices[i+2]]])
+        end
+        return fragment_labels, fragment_coords
+    end
+
     append!(all_indices, OH_indices)
     append!(all_indices, hydronium_indices)
-    append!(all_indices, water_indices)
     append!(all_indices, unsortable_indices)
+    append!(all_indices, water_indices)
 	
     unused_indices = setdiff([1:length(labels)...], all_indices)
     append!(all_indices, unused_indices)
@@ -168,6 +190,7 @@ function sort_water_cluster(coords::AbstractMatrix, labels::AbstractVector, to_a
 	if return_permutation
 		return all_indices
 	end
+
 	return labels[all_indices], coords[:, all_indices]
 end
 

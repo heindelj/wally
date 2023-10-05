@@ -338,3 +338,7 @@ function sample_psuedorandom_dimers_in_spheres(
     end
     return all_labels, all_geoms
 end
+
+function sample_nmers_from_cluster(coords::Matrix{Float64}, labels::Vector{String}, n_nodes::Int)
+    
+end
