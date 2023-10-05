@@ -430,6 +430,20 @@ function parse_xyz_and_eda_from_output!(infile::String, eda_dict::Dict{Symbol, V
             successfully_parsed_coords = false
             successfully_parsed_eda    = false
         end
+        if successfully_parsed_eda && !successfully_parsed_coords
+            # I don't know how this would ever happen but it seems
+            # to be possible?
+            possible_keys = [:elec, :pauli, :disp, :disp, :cls_elec, :mod_pauli, :pol, :ct, :deform]
+            for key in possible_keys
+                if key == :deform && !parse_fragment_energies
+                    continue
+                end
+                if occursin(eda_dict, key)
+                    pop!(eda_dict[key])
+                end
+            end
+            successfully_parsed_eda = false
+        end
     end
     num_labels = length(final_labels)
     num_eda_terms = length(eda_dict[:ct]) 
