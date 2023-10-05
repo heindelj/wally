@@ -333,7 +333,7 @@ function parse_xyz_and_eda_from_output!(infile::String, eda_dict::Dict{Symbol, V
 
     labels = String[]
     coords = Vector{Float64}[]
-    pending_coords = Matrix{Float64}()
+    pending_coords = Matrix{Float64}(undef)
     pending_labels = String[]
     final_labels = Vector{String}[]
     final_coords = Matrix{Float64}[]
