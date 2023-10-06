@@ -366,7 +366,7 @@ function parse_xyz_and_eda_from_output!(infile::String, eda_dict::Dict{Symbol, V
                 end
             end
         end
-        if occursin("\$molecule", line)
+        if occursin("\$molecule", line) && !successfully_parsed_coords
             in_molecule_block = true
         end
         if occursin("\$end", line) && in_molecule_block
@@ -402,6 +402,9 @@ function parse_xyz_and_eda_from_output!(infile::String, eda_dict::Dict{Symbol, V
         elseif occursin("CHARGE TRANSFER", line) && haskey(eda_dict, :ct)
             push!(eda_dict[:ct], tryparse(Float64, split(line)[3]))
             if successfully_parsed_coords
+                println("here")
+                display(pending_labels)
+                display(pending_coords)
                 push!(final_labels, pending_labels)
                 push!(final_coords, pending_coords)
                 successfully_parsed_coords = false
