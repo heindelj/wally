@@ -366,7 +366,7 @@ function parse_xyz_and_eda_from_output!(infile::String, eda_dict::Dict{Symbol, V
                 end
             end
         end
-        if occursin("\$molecule", line)
+        if occursin("\$molecule", line) && !successfully_parsed_coords
             in_molecule_block = true
         end
         if occursin("\$end", line) && in_molecule_block
@@ -401,7 +401,10 @@ function parse_xyz_and_eda_from_output!(infile::String, eda_dict::Dict{Symbol, V
             push!(eda_dict[:pol], tryparse(Float64, split(line)[2]))
         elseif occursin("CHARGE TRANSFER", line) && haskey(eda_dict, :ct)
             push!(eda_dict[:ct], tryparse(Float64, split(line)[3]))
-            successfully_parsed_eda = true
+            #successfully_parsed_eda = true
+            if successfully_parsed_coords
+                println("here")
+            end
         elseif occursin("Fragment Energies", line)
             if parse_fragment_energies && haskey(eda_dict, :deform)
                 index = copy(i+1)
@@ -417,8 +420,6 @@ function parse_xyz_and_eda_from_output!(infile::String, eda_dict::Dict{Symbol, V
         end
         if successfully_parsed_coords && successfully_parsed_eda
             # commit parsed data and reset state
-            display(pending_labels)
-            display(pending_coords)
             push!(final_labels, pending_labels)
             push!(final_coords, pending_coords)
             successfully_parsed_coords = false
