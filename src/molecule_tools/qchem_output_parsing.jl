@@ -434,6 +434,8 @@ function parse_xyz_and_eda_from_output!(infile::String, eda_dict::Dict{Symbol, V
             # I don't know how this would ever happen but it seems
             # to be possible?
             possible_keys = [:elec, :pauli, :disp, :disp, :cls_elec, :mod_pauli, :pol, :ct, :deform]
+            display(eda_dict)
+            display(pending_coords)
             for key in possible_keys
                 if key == :deform && !parse_fragment_energies
                     continue
