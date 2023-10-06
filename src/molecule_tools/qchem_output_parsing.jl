@@ -415,25 +415,16 @@ function parse_xyz_and_eda_from_output!(infile::String, eda_dict::Dict{Symbol, V
                 push!(eda_dict[:deform], (fragment_sum - num_fragments * fragment_zero) * 627.51 * 4.184)
             end
         end
-        #if occursin("fatal error", line) && !in_molecule_block
-        #    @warn string("Found failed job corresponding to job input ", length(final_labels), ". Throwing away the geometry and continuing.")
-        #    pop!(final_labels)
-        #    pop!(final_coords)
-        #end
         if successfully_parsed_coords && successfully_parsed_eda
             # commit parsed data and reset state
+            display(pending_labels)
+            display(pending_coords)
             push!(final_labels, pending_labels)
             push!(final_coords, pending_coords)
             successfully_parsed_coords = false
             successfully_parsed_eda    = false
             num_labels = length(final_labels)
             num_eda_terms = length(eda_dict[:ct])
-            if length(final_labels) % 25 == 0
-                display(length(final_labels))
-            end
-            if length(eda_dict[:ct]) % 25 == 0
-                display(length(eda_dict[:ct]))
-            end
             @assert length(final_labels) == length(eda_dict[:ct]) "Number of parsed geometries ($num_labels) and nummber of parsed eda terms ($num_eda_terms) aren't equal! Something went wrong with parsing."
         end
     end
