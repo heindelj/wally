@@ -377,7 +377,7 @@ function parse_xyz_and_eda_from_output!(infile::String, eda_dict::Dict{Symbol, V
                 # successfully parsed some coordinates and
                 # later successfully parse eda values.
                 display(labels)
-                reduce(hcat, coords)
+                display(reduce(hcat, coords))
                 pending_labels = copy(labels)
                 pending_coords = reduce(hcat, coords)
                 successfully_parsed_coords = true
