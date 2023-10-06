@@ -340,6 +340,7 @@ function eda_input()
   THRESH 14
   SCF_CONVERGENCE 7
   SCF_PRINT_FRGM TRUE
+  EDA_COVP TRUE
 \$end\n"
 end
 

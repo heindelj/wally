@@ -503,7 +503,7 @@ function write_xyz_and_csv_from_EDA_scans(folder_path::String, csv_outfile::Stri
     return
 end
 
-function write_xyz_and_csv_from_EDA_calculation(eda_job_output_file::String, csv_outfile::String, xyz_outfile::String, dist_index_1::Int=0, dist_index_2::Int=0)
+function write_xyz_and_csv_from_EDA_calculation(eda_job_output_file::String, csv_outfile::String, xyz_outfile::String, dist_index_1::Int=0, dist_index_2::Int=0, zero_ct_beyond_distance::Float64=0.0)
 
     # NOTE: For molecules that use ECPs, the regular Pauli and Elec are not calculated.
     # For simplicity, we ignore them here. But if you uncomment them and are parsing
@@ -537,6 +537,12 @@ function write_xyz_and_csv_from_EDA_calculation(eda_job_output_file::String, csv
         for i in eachindex(geoms)
             r = norm(geoms[i][:, dist_index_1] - geoms[i][:, dist_index_2])
             distances[i] = r
+            if zero_ct_beyond_distance > 0.0
+                if r >= zero_ct_beyond_distance
+                    df[!, :int][i] -= df[!, :ct][i]
+                    df[!, :ct][i] = 0.0
+                end
+            end
         end
         df[!, :distances] = distances
     end
