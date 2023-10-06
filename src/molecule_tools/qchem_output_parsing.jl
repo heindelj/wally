@@ -431,23 +431,23 @@ function parse_xyz_and_eda_from_output!(infile::String, eda_dict::Dict{Symbol, V
             successfully_parsed_eda    = false
             @assert length(final_labels) == length(eda_dict[:ct]) "Number of parsed geometries ($num_labels) and nummber of parsed eda terms ($num_eda_terms) aren't equal! Something went wrong with parsing."
         end
-        if successfully_parsed_eda && !successfully_parsed_coords && !in_molecule_block
-            # I don't know how this would ever happen but it seems
-            # to be possible?
-            for key in keys(eda_dict)
-                if key == :deform && !parse_fragment_energies
-                    continue
-                end
-                if key == :int
-                    # this key is filled in after all parsing by summing components
-                    continue
-                end
-                if haskey(eda_dict, key)
-                    pop!(eda_dict[key])
-                end
-            end
-            successfully_parsed_eda = false
-        end
+        #if successfully_parsed_eda && !successfully_parsed_coords && !in_molecule_block
+        #    # I don't know how this would ever happen but it seems
+        #    # to be possible?
+        #    for key in keys(eda_dict)
+        #        if key == :deform && !parse_fragment_energies
+        #            continue
+        #        end
+        #        if key == :int
+        #            # this key is filled in after all parsing by summing components
+        #            continue
+        #        end
+        #        if haskey(eda_dict, key)
+        #            pop!(eda_dict[key])
+        #        end
+        #    end
+        #    successfully_parsed_eda = false
+        #end
     end
     num_labels = length(final_labels)
     num_eda_terms = length(eda_dict[:ct]) 
