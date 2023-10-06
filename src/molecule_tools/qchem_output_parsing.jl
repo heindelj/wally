@@ -428,8 +428,6 @@ function parse_xyz_and_eda_from_output!(infile::String, eda_dict::Dict{Symbol, V
         if occursin("fatal error", line) && successfully_parsed_coords
             @warn string("Found failed job corresponding to job input ", length(final_labels), ". Throwing away the geometry and continuing.")
             successfully_parsed_coords = false
-            #pop!(final_labels)
-            #pop!(final_coords)
         end
     end
     num_labels = length(final_labels)
@@ -505,10 +503,7 @@ function write_xyz_and_csv_from_EDA_scans(folder_path::String, csv_outfile::Stri
     return
 end
 
-function write_xyz_and_csv_from_EDA_calculation(eda_job_output_file::String, csv_outfile::String, xyz_outfile::String, dist_index_1::Int=0, dist_index_2::Int=0)
-
-    # get xyz coordinates from input files
-    labels, geoms = parse_xyz_from_EDA_input(eda_job_output_file)
+function write_xyz_and_csv_from_EDA_calculation(eda_job_output_file::String, csv_outfile::String, dist_index_1::Int=0, dist_index_2::Int=0)
 
     # NOTE: For molecules that use ECPs, the regular Pauli and Elec are not calculated.
     # For simplicity, we ignore them here. But if you uncomment them and are parsing
@@ -524,8 +519,8 @@ function write_xyz_and_csv_from_EDA_calculation(eda_job_output_file::String, csv
         :int => Float64[],
     )
 
-    # get EDA data from output files
-    parse_EDA_terms!(eda_data, eda_job_output_file)
+    # get EDA data and xyz coordinates from output file
+    labels, geoms = parse_xyz_and_eda_from_output!(eda_job_output_file, eda_data)
     # populate interaction energy key
     for i in eachindex(eda_data[:cls_elec])
         push!(eda_data[:int], eda_data[:cls_elec][i] + eda_data[:mod_pauli][i] + eda_data[:ct][i] + eda_data[:disp][i] + eda_data[:pol][i])
