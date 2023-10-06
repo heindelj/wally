@@ -376,6 +376,8 @@ function parse_xyz_and_eda_from_output!(infile::String, eda_dict::Dict{Symbol, V
                 # pending and say we should keep this geometry if we
                 # successfully parsed some coordinates and
                 # later successfully parse eda values.
+                display(labels)
+                reduce(hcat, coords)
                 pending_labels = copy(labels)
                 pending_coords = reduce(hcat, coords)
                 successfully_parsed_coords = true
