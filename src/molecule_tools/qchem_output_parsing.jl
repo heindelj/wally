@@ -438,7 +438,7 @@ function parse_xyz_and_eda_from_output!(infile::String, eda_dict::Dict{Symbol, V
                 if key == :deform && !parse_fragment_energies
                     continue
                 end
-                if occursin(eda_dict, key)
+                if haskey(eda_dict, key)
                     pop!(eda_dict[key])
                 end
             end
