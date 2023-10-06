@@ -429,6 +429,8 @@ function parse_xyz_and_eda_from_output!(infile::String, eda_dict::Dict{Symbol, V
             push!(final_coords, pending_coords)
             successfully_parsed_coords = false
             successfully_parsed_eda    = false
+            num_labels = length(final_labels)
+            num_eda_terms = length(eda_dict[:ct])
             @assert length(final_labels) == length(eda_dict[:ct]) "Number of parsed geometries ($num_labels) and nummber of parsed eda terms ($num_eda_terms) aren't equal! Something went wrong with parsing."
         end
         #if successfully_parsed_eda && !successfully_parsed_coords && !in_molecule_block
@@ -450,7 +452,7 @@ function parse_xyz_and_eda_from_output!(infile::String, eda_dict::Dict{Symbol, V
         #end
     end
     num_labels = length(final_labels)
-    num_eda_terms = length(eda_dict[:ct]) 
+    num_eda_terms = length(eda_dict[:ct])
     @assert length(final_labels) == length(eda_dict[:ct]) "Number of parsed geometries ($num_labels) and nummber of parsed eda terms ($num_eda_terms) aren't equal! Something went wrong with parsing."
     return final_labels, final_coords
 end
