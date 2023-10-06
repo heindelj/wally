@@ -366,7 +366,7 @@ function parse_xyz_and_eda_from_output!(infile::String, eda_dict::Dict{Symbol, V
                 end
             end
         end
-        if occursin("\$molecule", line) && !successfully_parsed_coords
+        if occursin("\$molecule", line)
             in_molecule_block = true
         end
         if occursin("\$end", line) && in_molecule_block
@@ -401,9 +401,14 @@ function parse_xyz_and_eda_from_output!(infile::String, eda_dict::Dict{Symbol, V
             push!(eda_dict[:pol], tryparse(Float64, split(line)[2]))
         elseif occursin("CHARGE TRANSFER", line) && haskey(eda_dict, :ct)
             push!(eda_dict[:ct], tryparse(Float64, split(line)[3]))
-            #successfully_parsed_eda = true
             if successfully_parsed_coords
-                println("here")
+                push!(final_labels, pending_labels)
+                push!(final_coords, pending_coords)
+                successfully_parsed_coords = false
+                successfully_parsed_eda    = false
+                num_labels = length(final_labels)
+                num_eda_terms = length(eda_dict[:ct])
+                @assert length(final_labels) == length(eda_dict[:ct]) "Number of parsed geometries ($num_labels) and nummber of parsed eda terms ($num_eda_terms) aren't equal! Something went wrong with parsing."
             end
         elseif occursin("Fragment Energies", line)
             if parse_fragment_energies && haskey(eda_dict, :deform)
@@ -418,20 +423,20 @@ function parse_xyz_and_eda_from_output!(infile::String, eda_dict::Dict{Symbol, V
                 push!(eda_dict[:deform], (fragment_sum - num_fragments * fragment_zero) * 627.51 * 4.184)
             end
         end
-        if successfully_parsed_coords && successfully_parsed_eda
-            # commit parsed data and reset state
-            push!(final_labels, pending_labels)
-            push!(final_coords, pending_coords)
-            successfully_parsed_coords = false
-            successfully_parsed_eda    = false
-            num_labels = length(final_labels)
-            num_eda_terms = length(eda_dict[:ct])
-            @assert length(final_labels) == length(eda_dict[:ct]) "Number of parsed geometries ($num_labels) and nummber of parsed eda terms ($num_eda_terms) aren't equal! Something went wrong with parsing."
-        end
+        #if successfully_parsed_coords && successfully_parsed_eda
+        #    # commit parsed data and reset state
+        #    push!(final_labels, pending_labels)
+        #    push!(final_coords, pending_coords)
+        #    successfully_parsed_coords = false
+        #    successfully_parsed_eda    = false
+        #    num_labels = length(final_labels)
+        #    num_eda_terms = length(eda_dict[:ct])
+        #    @assert length(final_labels) == length(eda_dict[:ct]) "Number of parsed geometries ($num_labels) and nummber of parsed eda terms ($num_eda_terms) aren't equal! Something went wrong with parsing."
+        #end
     end
     num_labels = length(final_labels)
     num_eda_terms = length(eda_dict[:ct])
-    #@assert length(final_labels) == length(eda_dict[:ct]) "Number of parsed geometries ($num_labels) and nummber of parsed eda terms ($num_eda_terms) aren't equal! Something went wrong with parsing."
+    @assert length(final_labels) == length(eda_dict[:ct]) "Number of parsed geometries ($num_labels) and nummber of parsed eda terms ($num_eda_terms) aren't equal! Something went wrong with parsing."
     return final_labels, final_coords
 end
 
