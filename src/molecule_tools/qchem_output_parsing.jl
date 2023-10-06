@@ -430,7 +430,7 @@ function parse_xyz_and_eda_from_output!(infile::String, eda_dict::Dict{Symbol, V
             successfully_parsed_coords = false
             successfully_parsed_eda    = false
         end
-        if successfully_parsed_eda && !successfully_parsed_coords
+        if successfully_parsed_eda && !successfully_parsed_coords && !in_molecule_block
             # I don't know how this would ever happen but it seems
             # to be possible?
             possible_keys = [:elec, :pauli, :disp, :disp, :cls_elec, :mod_pauli, :pol, :ct, :deform]
