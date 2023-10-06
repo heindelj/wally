@@ -380,12 +380,16 @@ function parse_xyz_and_eda_from_output!(infile::String, eda_dict::Dict{Symbol, V
                 display(reduce(hcat, coords))
                 pending_labels = copy(labels)
                 pending_coords = reduce(hcat, coords)
+                display(pending_labels)
+                display(pending_coords)
                 successfully_parsed_coords = true
             end
             in_molecule_block = false
             found_fragment_separator = false
             labels = String[]
             coords = Vector{Float64}[]
+            display(pending_labels)
+            display(pending_coords)
         end
         if occursin("(ELEC)", line) && haskey(eda_dict, :elec)
             push!(eda_dict[:elec], tryparse(Float64, split(line)[5]))
