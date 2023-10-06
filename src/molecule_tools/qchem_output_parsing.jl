@@ -429,15 +429,17 @@ function parse_xyz_and_eda_from_output!(infile::String, eda_dict::Dict{Symbol, V
             push!(final_coords, pending_coords)
             successfully_parsed_coords = false
             successfully_parsed_eda    = false
+            @assert length(final_labels) == length(eda_dict[:ct]) "Number of parsed geometries ($num_labels) and nummber of parsed eda terms ($num_eda_terms) aren't equal! Something went wrong with parsing."
         end
         if successfully_parsed_eda && !successfully_parsed_coords && !in_molecule_block
             # I don't know how this would ever happen but it seems
             # to be possible?
-            possible_keys = [:elec, :pauli, :disp, :disp, :cls_elec, :mod_pauli, :pol, :ct, :deform]
-            display(eda_dict)
-            display(pending_coords)
-            for key in possible_keys
+            for key in keys(eda_dict)
                 if key == :deform && !parse_fragment_energies
+                    continue
+                end
+                if key == :int
+                    # this key is filled in after all parsing by summing components
                     continue
                 end
                 if haskey(eda_dict, key)
