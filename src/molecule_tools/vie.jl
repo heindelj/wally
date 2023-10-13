@@ -334,7 +334,7 @@ mem_static 16000
             write(io, rem_input_string_gas_phase)
             write(io, string("\n\n\$basis\n", basis_string, "\$end\n\n@@@\n\n"))
             write(io, "\$molecule\n")
-            write(io, string(cluster_charge+1, " ", 2, "\n"))
+            write(io, string(cluster_charge-1, " ", 2, "\n"))
             write(io, geom_string)
             write(io, "\$end\n\n")
             write(io, rem_input_string_with_env)
