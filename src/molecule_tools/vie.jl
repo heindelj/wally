@@ -216,6 +216,136 @@ mem_static 16000
     end
 end
 
+"""
+This function assumes that you have generated cluster_samples and the
+charges which are used as the environment. All geometries and charges are
+read from ./sampled_geoms_and_optimized_shells/
+"""
+function write_input_files_for_vea_qchem(
+    qchem_infile_prefix::String,
+    num_samples::Int
+)
+    atom_charges = Dict(
+        "O"   => -2,
+        "Cl"  => -1,
+        "H"   =>  1,
+        "Na"  =>  1,
+    )
+
+    fragment_basis_sets = Dict(
+        ["O", "H"] => "aug-cc-pvtz",
+        ["O", "H", "H", "H"] => "aug-cc-pvtz",
+        ["Cl"] => "aug-cc-pvtz",
+        ["Na"] => "aug-cc-pvtz"
+    )
+    
+    rem_input_string_gas_phase = "\$rem
+jobtype                 sp
+method                  wB97M-V
+unrestricted            1
+basis                   mixed
+xc_grid        2
+scf_max_cycles          500
+scf_convergence         6
+thresh                  14
+s2thresh 14
+symmetry                0
+sym_ignore              1
+mem_total 256000
+mem_static 16000
+\$end"
+
+    rem_input_string_with_env = "\$rem
+jobtype                 sp
+method                  wB97M-V
+unrestricted            1
+basis                   mixed
+xc_grid        2
+scf_max_cycles          500
+scf_convergence         6
+SCF_GUESS               read
+thresh                  14
+s2thresh 14
+symmetry                0
+sym_ignore              1
+mem_total 256000
+mem_static 16000
+\$end"
+
+    mkpath("qchem_input_files_vea")
+    @showprogress for i_sample in 1:num_samples
+        if (
+            !ispath(string("sampled_geoms_and_optimized_shells/cluster_sample_", i_sample, "_shell_positions_anion.txt"))
+        )
+            @warn "Couldn't open charges file for sample $i_sample. Moving on to the next sample."
+            continue
+        end
+        _, cluster_labels, cluster_geom = read_xyz(string("sampled_geoms_and_optimized_shells/cluster_sample_", i_sample, ".xyz"))
+
+        cluster_charge = sum([atom_charges[label] for label in cluster_labels[1]])
+        
+        cluster = build_cluster(cluster_geom[1], cluster_labels[1])
+        
+        # stores label, atom number, and basis set
+        all_basis_sets = Tuple{String, Int, String}[]
+        for i_frag in eachindex(cluster.indices)
+            if haskey(fragment_basis_sets, cluster.labels[cluster.indices[i_frag]])
+                for index in cluster.indices[i_frag]
+                    push!(all_basis_sets, (cluster.labels[index], index, fragment_basis_sets[cluster.labels[cluster.indices[i_frag]]]))
+                end
+            else
+                for index in cluster.indices[i_frag]
+                    push!(all_basis_sets, (cluster.labels[index], index, "aug-cc-pvdz"))
+                end
+            end
+        end
+
+        basis_string = ""
+        for i_atom in eachindex(all_basis_sets)
+            basis_string = string(basis_string, all_basis_sets[i_atom][1], " ", all_basis_sets[i_atom][2], "\n", all_basis_sets[i_atom][3], "\n****\n")
+        end
+
+        geom_string = geometry_to_string(cluster_geom[1], cluster_labels[1])
+        # write anion file
+        open(string("qchem_input_files_vea/", qchem_infile_prefix, "_cation_sample_", i_sample, ".in"), "w") do io
+            write(io, "\$molecule\n")
+            write(io, string(cluster_charge, " ", 1, "\n"))
+            write(io, geom_string)
+            write(io, "\$end\n\n")
+            write(io, rem_input_string_gas_phase)
+            write(io, string("\n\n\$basis\n", basis_string, "\$end\n\n@@@\n\n"))
+            write(io, "\$molecule\n")
+            write(io, string(cluster_charge, " ", 1, "\n"))
+            write(io, geom_string)
+            write(io, "\$end\n\n")
+            write(io, rem_input_string_with_env)
+            write(io, string("\n\n\$basis\n", basis_string, "\$end\n\n"))
+            write(io, "\n\$external_charges\n")
+            writedlm(io, readdlm(string("sampled_geoms_and_optimized_shells/cluster_sample_", i_sample, "_shell_positions_anion.txt")))
+            write(io, "\$end\n\n")
+        end
+
+        # write radical file
+        open(string("qchem_input_files_vea/", qchem_infile_prefix, "_radical_sample_", i_sample, ".in"), "w") do io
+            write(io, "\$molecule\n")
+            write(io, string(cluster_charge-1, " ", 2, "\n"))
+            write(io, geom_string)
+            write(io, "\$end\n\n")
+            write(io, rem_input_string_gas_phase)
+            write(io, string("\n\n\$basis\n", basis_string, "\$end\n\n@@@\n\n"))
+            write(io, "\$molecule\n")
+            write(io, string(cluster_charge+1, " ", 2, "\n"))
+            write(io, geom_string)
+            write(io, "\$end\n\n")
+            write(io, rem_input_string_with_env)
+            write(io, string("\n\n\$basis\n", basis_string, "\$end\n\n"))
+            write(io, "\n\$external_charges\n")
+            writedlm(io, readdlm(string("sampled_geoms_and_optimized_shells/cluster_sample_", i_sample, "_shell_positions_anion.txt")))
+            write(io, "\$end\n\n")
+        end
+    end
+end
+
 function write_input_files_for_water_average_energy(
     infile_prefix::String,
     sampled_geometries_files::String,
