@@ -436,6 +436,146 @@ function parse_xyz_and_eda_from_output!(infile::String, eda_dict::Dict{Symbol, V
     return final_labels, final_coords
 end
 
+function parse_xyz_and_fda_data(infile::String)
+    lines = readlines(infile)
+
+    labels = String[]
+    coords = Vector{Float64}[]
+    final_coords = Matrix{Float64}(undef, 0, 0)
+    final_labels = String[]
+
+    natoms = 0
+
+    temp_forces = Vector{Float64}[]
+    final_deformation_forces = Matrix{Float64}(undef, 0, 0)
+    final_non_elec_frozen_forces = Matrix{Float64}(undef, 0, 0)
+    final_polarization_forces = Matrix{Float64}(undef, 0, 0)
+    final_charge_transfer_forces = Matrix{Float64}(undef, 0, 0)
+    final_electrostatic_forces = Matrix{Float64}(undef, 0, 0)
+    final_total_forces = Matrix{Float64}(undef, 0, 0)
+
+    successfully_parsed_coords = false
+
+    in_molecule_block = false
+    found_fragment_separator = false
+    for (i, line) in enumerate(lines)
+        if in_molecule_block
+            if successfully_parsed_coords
+                # we can only get here if we parsed some coordinates
+                # but then failed to find eda terms corresponding to
+                # that geometry
+                successfully_parsed_coords = false
+            end
+            split_line = split(line)
+            if length(split_line) == 4 && found_fragment_separator
+                if all(isletter, strip(split_line[1], ('+', '-')))
+                    xyz = tryparse.((Float64,), split_line[2:4])
+                    if !any(isnothing, xyz)
+                        push!(coords, xyz)
+                        push!(labels, strip(split_line[1], ('+', '-')))
+                    end
+                end
+            elseif found_fragment_separator == false
+                if occursin("--", line)
+                    found_fragment_separator = true
+                end
+            end
+        end
+        if occursin("\$molecule", line) && !successfully_parsed_coords
+            in_molecule_block = true
+        end
+        if occursin("\$end", line) && in_molecule_block
+            if found_fragment_separator
+                # If we get here, we successfully parsed a geometry.
+                # We then store these coordinates and labels in the 
+                # pending and say we should keep this geometry if we
+                # successfully parsed some coordinates and
+                # later successfully parse eda values.
+                final_labels = copy(labels)
+                final_coords = reduce(hcat, coords)
+                natoms = length(final_labels)
+                successfully_parsed_coords = true
+            end
+            in_molecule_block = false
+            found_fragment_separator = false
+        end
+        if occursin("Geometric Distortion Forces", line)
+            for j in 1:natoms
+                split_line = split(lines[i+j+1])
+                xyz = tryparse.((Float64,), split_line[2:4])
+                if !any(isnothing, xyz)
+                    push!(temp_forces, xyz)
+                end
+            end
+            final_deformation_forces = reduce(hcat, temp_forces)
+            empty!(temp_forces)
+        elseif occursin("Classical Electrostatic Forces", line)
+            for j in 1:natoms
+                split_line = split(lines[i+j+1])
+                xyz = tryparse.((Float64,), split_line[2:4])
+                if !any(isnothing, xyz)
+                    push!(temp_forces, xyz)
+                end
+            end
+            final_electrostatic_forces = reduce(hcat, temp_forces)
+            empty!(temp_forces)
+        elseif occursin("Non-Electrostatic Frozen Forces", line)
+            for j in 1:natoms
+                split_line = split(lines[i+j+1])
+                xyz = tryparse.((Float64,), split_line[2:4])
+                if !any(isnothing, xyz)
+                    push!(temp_forces, xyz)
+                end
+            end
+            final_non_elec_frozen_forces = reduce(hcat, temp_forces)
+            empty!(temp_forces)
+        elseif occursin("Polarization Forces", line)
+            for j in 1:natoms
+                split_line = split(lines[i+j+1])
+                xyz = tryparse.((Float64,), split_line[2:4])
+                if !any(isnothing, xyz)
+                    push!(temp_forces, xyz)
+                end
+            end
+            final_polarization_forces = reduce(hcat, temp_forces)
+            empty!(temp_forces)
+        elseif occursin("Charge Transfer Forces", line)
+            for j in 1:natoms
+                split_line = split(lines[i+j+1])
+                xyz = tryparse.((Float64,), split_line[2:4])
+                if !any(isnothing, xyz)
+                    push!(temp_forces, xyz)
+                end
+            end
+            final_charge_transfer_forces = reduce(hcat, temp_forces)
+            empty!(temp_forces)
+        elseif occursin("Total Forces", line)
+            for j in 1:natoms
+                split_line = split(lines[i+j+1])
+                xyz = tryparse.((Float64,), split_line[2:4])
+                if !any(isnothing, xyz)
+                    push!(temp_forces, xyz)
+                end
+            end
+            final_total_forces = reduce(hcat, temp_forces)
+            empty!(temp_forces)
+        end
+        if occursin("fatal error", line) && successfully_parsed_coords
+            @warn string("Found failed job corresponding to job input ", length(final_labels), ". Throwing away the geometry and continuing.")
+            successfully_parsed_coords = false
+        end
+    end
+    force_dict = Dict{Symbol, Matrix{Float64}}(
+        :Deformation => final_deformation_forces,
+        :NonElecFrozen => final_non_elec_frozen_forces,
+        :Electrostatics => final_electrostatic_forces,
+        :Polarization => final_polarization_forces,
+        :ChargeTransfer => final_charge_transfer_forces,
+        :Total => final_total_forces
+    )
+    return final_labels, final_coords, force_dict
+end
+
 """
 Reads all file names from within a path and finds the pairs of .in and .out files
 which are expected to have EDA data. Parses the xyz file from the .in file and
@@ -630,6 +770,17 @@ function process_EDA_mbe_calculation(full_output_file::String, mbe_output_files:
         push!(total_eda_data[key], total_eda_data[key][end] - total_eda_data[key][1])
     end
 
-    labels, coords = parse_xyz_from_EDA_input(full_output_file)
-    return labels[1], coords[1], total_eda_data
+    eda_data = Dict(
+        :cls_elec => Float64[],
+        :elec => Float64[],
+        :mod_pauli => Float64[],
+        :pauli => Float64[],
+        :disp => Float64[],
+        :pol => Float64[],
+        :ct => Float64[]
+    )
+
+    labels, coords = parse_xyz_and_eda_from_output!(full_output_file, eda_data)
+    return labels[1], [MVector{3, Float64}(coords[1][:, i]) for i in eachindex(eachcol(coords[1]))], total_eda_data
 end
+
