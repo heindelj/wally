@@ -37,14 +37,14 @@ function set_up_crest_sampling(seed_coordinates::Matrix{Float64}, seed_labels::V
     end
 end
 
-function run_crest_sampling(charge::Int)
+function run_crest_sampling(charge::Int, gfn::Int=2)
     all_files_and_folders = readdir()
 
     for folder in all_files_and_folders
         if isdir(folder) && contains(folder, "sample_")
             cd(folder)
             i_sample = split(folder, "_")[2]
-            crest_command = `crest ion_water_config_guess_$i_sample.xyz --nci --chrg $charge --noreftopo`
+            crest_command = `crest ion_water_config_guess_$i_sample.xyz --nci --chrg $charge --gfn $gfn --noreftopo`
             run(crest_command)
             cd("..")
         end

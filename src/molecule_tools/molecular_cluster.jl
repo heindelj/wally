@@ -32,7 +32,7 @@ struct Cluster
 end
 
 function is_bonded(distance::Float64, label1::String, label2::String)
-    exclusion_list = ["Li", "Na", "K", "Rb", "Cs", "F", "Cl", "Br", "I"]
+    exclusion_list = ["Li", "Na", "K", "Rb", "Cs", "Mg", "Ca", "F", "Cl", "Br", "I"]
     if label1 ∉ exclusion_list && label2 ∉ exclusion_list
         return distance < (covalent_radius(label1) + covalent_radius(label2) + 0.4)
     end
@@ -86,6 +86,11 @@ function build_cluster(geom::AbstractMatrix{Float64}, labels::AbstractVector{Str
         if length(cluster_indices) == 0
             molecular_indices = Int[]
             find_bonded_atoms!(indices, dists, molecular_indices, i, labels)
+            if isempty(molecular_indices)
+                # we should only get here if the atom is in the exclusion list
+                # So, we just add that index by itself. 
+                push!(molecular_indices, i)
+            end
             push!(cluster_indices, molecular_indices)
         elseif sum(i .∈ cluster_indices) == 0
             molecular_indices = Int[]

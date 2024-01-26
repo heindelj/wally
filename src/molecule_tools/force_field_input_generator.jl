@@ -2,6 +2,28 @@ include("sample_configurations.jl")
 include("qchem_input_generator.jl")
 include("gdma_and_orient.jl")
 include("scans.jl")
+using Graphs
+
+function get_total_charge(labels::Vector{String})
+    charges = Dict(
+        "H" => 1,
+        "O" => -2,
+        "Li" => 1,
+        "Na" => 1,
+        "K" => 1,
+        "Rb" => 1,
+        "Cs" => 1,
+        "Mg" => 2,
+        "Ca" => 2,
+        "F" => -1,
+        "Cl" => -1,
+        "Br" => -1,
+        "I" => -1
+    )
+
+    charge = sum(charges[label] for label in labels)
+    return charge
+end
 
 function generate_all_inputs_main(
     infile_name::String,
@@ -501,6 +523,42 @@ function generate_ion_triples_optimization_input()
                 3, 1
             )
         end
+    end
+end
+
+function generate_ion_water_cluster_optimization_inputs(file_prefix::String, geoms::Vector{Matrix{Float64}}, labels::Vector{Vector{String}}, num_geoms_to_opt::Int=10)
+    
+    # always store the first graph since it is the lowest in energy
+    unique_geom_indices = Int[]
+    graphs = MolecularGraph[]
+    G = build_noncovalent_molecular_graph(geoms[1], labels[1])
+    push!(graphs, G)
+    push!(unique_geom_indices, 1)
+
+    for i in eachindex(geoms)
+        G = build_noncovalent_molecular_graph(geoms[i], labels[i])
+        num_isomorphs = 0
+        for i_graph in eachindex(graphs)
+            num_isomorphs += Graphs.Experimental.count_isomorph(G.G, graphs[i_graph].G)
+        end
+        if num_isomorphs == 0
+            push!(unique_geom_indices, i)
+            push!(graphs, G)
+        end
+    end
+
+    if length(graphs) < num_geoms_to_opt
+        num_geoms_to_opt = length(graphs)
+    end
+
+    mkpath(file_prefix)
+    charge = get_total_charge(labels[1])
+    for i in 1:num_geoms_to_opt
+        write_input_file(
+            string(file_prefix, "/", file_prefix, "_wb97xv_tzvppd_opt_", i, ".in"),
+            geoms[unique_geom_indices[i]], labels[unique_geom_indices[i]], wb97xv_tzvppd_opt(),
+            charge, 1
+        )
     end
 end
 
