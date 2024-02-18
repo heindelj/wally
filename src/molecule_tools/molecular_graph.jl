@@ -46,7 +46,7 @@ function build_noncovalent_molecular_graph(coords::Matrix{Float64}, labels::Vect
     # Idea: Use the parallel polarizability, just like Martin did
     # to come up with a generic definition of hydrogen bonds.
     # Probably there is some similar maximum in the polarizability
-    # as the ion-water hydrogen bond breaks. 
+    # as the ion-water hydrogen bond breaks.
 
     water_labels = String[]
     water_indices = Int[]

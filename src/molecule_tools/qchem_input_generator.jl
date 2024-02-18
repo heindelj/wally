@@ -1,6 +1,27 @@
 include("nwchem_input_generator.jl")
 using Combinatorics
 
+function get_total_charge(labels::AbstractVector{String})
+    charges = Dict(
+        "H" => 1,
+        "O" => -2,
+        "Li" => 1,
+        "Na" => 1,
+        "K" => 1,
+        "Rb" => 1,
+        "Cs" => 1,
+        "Mg" => 2,
+        "Ca" => 2,
+        "F" => -1,
+        "Cl" => -1,
+        "Br" => -1,
+        "I" => -1
+    )
+
+    charge = sum(charges[label] for label in labels)
+    return charge
+end
+
 """
 Writes a single Q-Chem input file.
 """
@@ -204,27 +225,29 @@ function write_mbe_inputs(
                     index += 1
                 end
             end
+            subsystem_charges = [get_total_charge(subsystem_labels[shifted_indices[i]]) for i in eachindex(shifted_indices)]
             write_input_file_fragments(
                 string(file_prefix, "_", i_mbe, "_body.in"),
                 subsystem_coords,
                 subsystem_labels,
                 rem_input,
-                0, 1,
+                sum(subsystem_charges), 1,
                 shifted_indices,
-                zeros(Int, length(shifted_indices)),
+                subsystem_charges,
                 ones(Int, length(shifted_indices))
             )
         end
     end
     if include_full_system
+        subsystem_charges = [get_total_charge(labels[fragment_indices[i]]) for i in eachindex(fragment_indices)]
         write_input_file_fragments(
             string(file_prefix, "_full_system.in"),
             coords,
             labels,
             rem_input,
-            0, 1,
+            sum(subsystem_charges), 1,
             fragment_indices,
-            zeros(Int, length(fragment_indices)),
+            subsystem_charges,
             ones(Int, length(fragment_indices))
         )
     end
@@ -485,8 +508,8 @@ end
 function optimize_then_harmonic_analysis_input()
     return "\$rem
   JOBTYPE opt
-  method wB97M-V
-  BASIS aug-cc-pVDZ
+  method wB97X-V
+  BASIS def2-qzvppd
   XC_GRID 000099000590
   NL_GRID 1
   UNRESTRICTED FALSE
@@ -507,8 +530,8 @@ read
 
 \$rem
   JOBTYPE freq
-  method wB97M-V
-  BASIS aug-cc-pVDZ
+  method wB97X-V
+  BASIS def2-qzvppd
   SCF_GUESS read
   XC_GRID 000099000590
   NL_GRID 1

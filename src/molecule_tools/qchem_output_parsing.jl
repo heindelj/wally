@@ -1,4 +1,4 @@
-using LinearAlgebra, CSV, DataFrames
+using LinearAlgebra, CSV, DataFrames, Combinatorics
 include("read_xyz.jl")
 
 """
@@ -917,7 +917,7 @@ function process_EDA_mbe_calculation(full_output_file::String, mbe_output_files:
         total_eda_data[:disp][end] +
         total_eda_data[:pol][end] +
         total_eda_data[:ct][end]
-    )
+    )   
     push!(total_eda_data[:int], total_interaction)
     for i in eachindex(total_eda_data[:int])
         if i < length(total_eda_data[:int])
@@ -947,3 +947,161 @@ function process_EDA_mbe_calculation(full_output_file::String, mbe_output_files:
     return labels[1], [MVector{3, Float64}(coords[1][:, i]) for i in eachindex(eachcol(coords[1]))], total_eda_data
 end
 
+function process_EDA_mbe_ion_water_calculation(full_output_file::String, two_body_output_file::String, three_body_output_file::String)
+
+    E_h2o = -76.440791829812
+    # TODO: Get the rest of the ion energies at wB97X-V/def2-qzvppd ^^^
+    # get EDA data from output files
+
+    eda_data = Dict(
+        :cls_elec => Float64[],
+        :elec => Float64[],
+        :mod_pauli => Float64[],
+        :pauli => Float64[],
+        :disp => Float64[],
+        :pol => Float64[],
+        :ct => Float64[]
+    )
+
+    labels, coords = parse_xyz_and_eda_from_output!(full_output_file, eda_data)
+    # Everything in here assumes there is a single ion and the rest is water and
+    # that ion comes at the beginning of the xyz coordinates.
+    num_fragments = ((length(labels[1]) - 1) ÷ 3) + 1
+
+    num_ion_water_dimers    = binomial(num_fragments-1, 1)
+    num_ion_water_trimers   = binomial(num_fragments-1, 2)
+
+    two_body_eda_data = Dict(
+        :cls_elec => Float64[],
+        :mod_pauli => Float64[],
+        :disp => Float64[],
+        :pol => Float64[],
+        :ct => Float64[],
+        :int => Float64[],
+        :deform => Float64[],
+        :total => Float64[]
+    )
+
+    three_body_eda_data = Dict(
+        :cls_elec => Float64[],
+        :mod_pauli => Float64[],
+        :disp => Float64[],
+        :pol => Float64[],
+        :ct => Float64[],
+        :int => Float64[],
+        :deform => Float64[],
+        :total => Float64[]
+    )
+
+    # Parse two and three body contributions to EDA MBE #
+    parse_EDA_terms!(two_body_eda_data, two_body_output_file, false)
+    parse_EDA_terms!(three_body_eda_data, three_body_output_file, false)
+
+    # Make tuples of ion-water and water-water #
+    start_ww  = num_ion_water_dimers + 1
+    
+    
+    elec_2body  = (sum(two_body_eda_data[:cls_elec][1:start_ww-1]), sum(two_body_eda_data[:cls_elec][start_ww:end]))
+    pauli_2body = (sum(two_body_eda_data[:mod_pauli][1:start_ww-1]), sum(two_body_eda_data[:mod_pauli][start_ww:end]))
+    disp_2body  = (sum(two_body_eda_data[:disp][1:start_ww-1]), sum(two_body_eda_data[:disp][start_ww:end]))
+    pol_2body   = (sum(two_body_eda_data[:pol][1:start_ww-1]), sum(two_body_eda_data[:pol][start_ww:end]))
+    ct_2body    = (sum(two_body_eda_data[:ct][1:start_ww-1]), sum(two_body_eda_data[:ct][start_ww:end]))
+    
+    # Make tuples of ion-water-water and water-water-water terms #
+    # NOTE: It is easy to work out that the number of times each ion-water dimer
+    # appears in the set of i-w-w triples if the number of waters minus one (for one ion).
+    # Similarly, the number of times each water dimer appears is always one.
+    # So, we take the sum of all ion-water trimer energies for each component and subtract
+    # off the total 2-body water-water contribution and num_waters-1 times the ion-water
+    # contribution. This leaves us with just the 3-body i-w-w contribution.
+    # The w-w-w contributions are easily shown to have every dimer contibue num_waters-2 times.
+    start_www = num_ion_water_trimers + 1
+    num_waters = num_fragments - 1
+    elec_3body  = (sum(three_body_eda_data[:cls_elec][1:start_www-1]) - (num_waters-1) * elec_2body[1] - elec_2body[2], sum(three_body_eda_data[:cls_elec][start_www:end]) - (num_waters-2) * elec_2body[2])
+    pauli_3body  = (sum(three_body_eda_data[:mod_pauli][1:start_www-1]) - (num_waters-1) * pauli_2body[1] - pauli_2body[2], sum(three_body_eda_data[:mod_pauli][start_www:end]) - (num_waters-2) * pauli_2body[2])
+    disp_3body  = (sum(three_body_eda_data[:disp][1:start_www-1]) - (num_waters-1) * disp_2body[1] - disp_2body[2], sum(three_body_eda_data[:disp][start_www:end]) - (num_waters-2) * disp_2body[2])
+    pol_3body  = (sum(three_body_eda_data[:pol][1:start_www-1]) - (num_waters-1) * pol_2body[1] - pol_2body[2], sum(three_body_eda_data[:pol][start_www:end]) - (num_waters-2) * pol_2body[2])
+    ct_3body  = (sum(three_body_eda_data[:ct][1:start_www-1]) - (num_waters-1) * ct_2body[1] - ct_2body[2], sum(three_body_eda_data[:ct][start_www:end]) - (num_waters-2) * ct_2body[2])
+
+    total_eda_data = Dict(
+        :cls_elec => [elec_2body[1], elec_2body[2], elec_3body[1], elec_3body[2], eda_data[:cls_elec][1]] / 4.184,
+        :mod_pauli => [pauli_2body[1], pauli_2body[2], pauli_3body[1], pauli_3body[2], eda_data[:mod_pauli][1]] / 4.184,
+        :disp => [disp_2body[1], disp_2body[2], disp_3body[1], disp_3body[2], eda_data[:disp][1]] / 4.184,
+        :pol => [pol_2body[1], pol_2body[2], pol_3body[1], pol_3body[2], eda_data[:pol][1]] / 4.184,
+        :ct => [ct_2body[1], ct_2body[2], ct_3body[1], ct_3body[2], eda_data[:ct][1]] / 4.184,
+        :int => Float64[],
+        :deform => Float64[],
+        :total => Float64[]
+    )
+
+    # HERE! Need to add in the deformation and add everything up to get the various totals
+    display(total_eda_data)
+
+    #for mbe_file in mbe_output_files
+    #    mbe_eda_data = Dict(
+    #        :cls_elec => Float64[],
+    #        :elec => Float64[],
+    #        :mod_pauli => Float64[],
+    #        :pauli => Float64[],
+    #        :disp => Float64[],
+    #        :pol => Float64[],
+    #        :ct => Float64[],
+    #        :int => Float64[],
+    #        :deform => Float64[]
+    #    )
+    #    parse_EDA_terms!(mbe_eda_data, mbe_file, true, E_h2o)
+    #    for key in keys(mbe_eda_data)
+    #        if key != :int
+    #            term_total = sum(mbe_eda_data[key])
+    #            push!(total_eda_data[key], term_total / 4.184)
+    #        end
+    #    end
+    #    total_interaction = (
+    #        total_eda_data[:cls_elec][end] +
+    #        total_eda_data[:mod_pauli][end] +
+    #        total_eda_data[:disp][end] +
+    #        total_eda_data[:pol][end] +
+    #        total_eda_data[:ct][end]
+    #    )
+    #    push!(total_eda_data[:int], total_interaction)
+    #end
+    #parse_EDA_terms!(total_eda_data, full_output_file, true, E_h2o)
+    #for key in keys(total_eda_data)
+    #    if length(total_eda_data[key]) > 0 && key != :int
+    #        total_eda_data[key][end] /= 4.184
+    #    end
+    #end
+    #total_interaction = (
+    #    total_eda_data[:cls_elec][end] +
+    #    total_eda_data[:mod_pauli][end] +
+    #    total_eda_data[:disp][end] +
+    #    total_eda_data[:pol][end] +
+    #    total_eda_data[:ct][end]
+    #)   
+    #push!(total_eda_data[:int], total_interaction)
+    #for i in eachindex(total_eda_data[:int])
+    #    if i < length(total_eda_data[:int])
+    #        total_eda_data[:deform][i] = total_eda_data[:deform][end]
+    #    end
+    #    push!(total_eda_data[:total], total_eda_data[:int][i] + total_eda_data[:deform][end])
+    #    # ^^ Always add the end of deformation since the MBE one gets summed too many times
+    #    # and the deformation at an MBE level and full level are always the same.
+    #end
+
+    # append total many-body contribution to each term
+    #for key in keys(total_eda_data)
+    #    push!(total_eda_data[key], total_eda_data[key][end] - total_eda_data[key][1])
+    #end
+
+    #eda_data = Dict(
+    #    :cls_elec => Float64[],
+    #    :elec => Float64[],
+    #    :mod_pauli => Float64[],
+    #    :pauli => Float64[],
+    #    :disp => Float64[],
+    #    :pol => Float64[],
+    #    :ct => Float64[]
+    #)
+    #labels, coords = parse_xyz_and_eda_from_output!(full_output_file, eda_data)
+    return labels[1], [MVector{3, Float64}(coords[1][:, i]) for i in eachindex(eachcol(coords[1]))], total_eda_data
+end

@@ -2,10 +2,7 @@ include("water_tools.jl")
 include("units.jl")
 include("read_xyz.jl")
 
-using Libdl
-using Base.Filesystem
-using LinearAlgebra
-using DelimitedFiles
+using Libdl, Base.Filesystem, LinearAlgebra, DelimitedFiles, HybridArrays
 
 abstract type AbstractPotential end
 

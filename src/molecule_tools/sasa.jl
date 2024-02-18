@@ -58,7 +58,7 @@ function solvent_accessible_surface_area(
     areas = zeros(length(labels))
     Threads.@threads for i in eachindex(coords_static)
         id = Threads.threadid()
-        # move the spherical mesh to the radius of this atom center it on the atom
+        # move the spherical mesh to the radius of this atom centered on the atom
         for i_mesh in eachindex(meshes[id])
             meshes[id][i_mesh] *= all_radii[i]
             meshes[id][i_mesh] += coords_static[i]

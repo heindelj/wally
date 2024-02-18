@@ -4,27 +4,6 @@ include("gdma_and_orient.jl")
 include("scans.jl")
 using Graphs
 
-function get_total_charge(labels::Vector{String})
-    charges = Dict(
-        "H" => 1,
-        "O" => -2,
-        "Li" => 1,
-        "Na" => 1,
-        "K" => 1,
-        "Rb" => 1,
-        "Cs" => 1,
-        "Mg" => 2,
-        "Ca" => 2,
-        "F" => -1,
-        "Cl" => -1,
-        "Br" => -1,
-        "I" => -1
-    )
-
-    charge = sum(charges[label] for label in labels)
-    return charge
-end
-
 function generate_all_inputs_main(
     infile_name::String,
     coords::AbstractVector{Matrix{Float64}},
@@ -562,12 +541,92 @@ function generate_ion_water_cluster_optimization_inputs(file_prefix::String, geo
     end
 end
 
+function write_electrostatic_potential_input(infile_name::String, coords::Vector{MVector{3, Float64}}, labels::Vector{String}, charge::Int, multplicity::Int, min_factor_of_vdw_radius::Float64=0.9, max_factor_of_vdw_radius::Float64=1.5)
+    esp_grid = generate_electrostatic_potential_grid(coords, labels, min_factor_of_vdw_radius, max_factor_of_vdw_radius)
+    esp_grid /= 0.529177
+
+    num_grid_points = length(esp_grid)
+
+    writedlm("ESPGrid", esp_grid)
+
+    rem_input = "\$rem
+  mem_total  16000
+  jobtype                 sp
+  method                  wB97X-V
+  unrestricted            false
+  basis                   def2-qzvppd
+  scf_algorithm           gdm
+  scf_max_cycles          500
+  scf_guess               sad
+  scf_convergence         8
+  thresh                  14
+  symmetry                0
+  sym_ignore              1
+  gen_scfman              true
+  gen_scfman_final        true
+  ESP_GRID     +$num_grid_points
+\$end
+
+\$plots
+  comment line
+  1   0.0   0.0
+  1   0.0   0.0
+  1   0.0   0.0
+  0  0  0  0
+  0
+\$end
+"
+
+write_input_file(infile_name, reduce(hcat, coords), labels, rem_input, charge, multplicity)
+    
+end
+
+function generate_electrostatic_potential_grid(coords::Vector{MVector{3, Float64}}, labels::Vector{String}, min_factor_of_vdw_radius::Float64=0.9, max_factor_of_vdw_radius::Float64=1.5)
+    com = center_of_mass(reduce(hcat, coords), labels)
+    vdw_radii = [vdw_radius(label) for label in labels]
+    
+    gridx = (com[1] - 6.0):0.2:(com[1] + 6.0)
+    gridy = (com[2] - 6.0):0.2:(com[2] + 6.0)
+    gridz = (com[3] - 6.0):0.2:(com[3] + 6.0)
+
+    grid_points = MVector{3, Float64}[]
+    for i in eachindex(gridx)
+        for j in eachindex(gridy)
+            for k in eachindex(gridz)
+                point = MVector{3, Float64}(gridx[i], gridy[j], gridz[k])
+                push!(grid_points, point)
+            end
+        end
+    end
+
+    # @ROBUSTNESS: This approach won't work for large molecules
+    # since a grid point could be accepted by one atom even though it
+    # is sitting on top of another atom. Could just set a minimum distance?
+    accepted_indices = Int[]
+    for i_point in eachindex(grid_points)
+        is_accepted_by_any_atom = false
+        for i in eachindex(coords)
+            # Find points to accept for this atom
+            dist_to_point = norm(grid_points[i_point] - coords[i])
+            if ((dist_to_point > min_factor_of_vdw_radius * vdw_radii[i]) & (dist_to_point < max_factor_of_vdw_radius * vdw_radii[i]))
+                is_accepted_by_any_atom = true
+                break
+            end
+        end
+        if is_accepted_by_any_atom
+            push!(accepted_indices, i_point)
+        end
+    end
+
+    return grid_points[accepted_indices]
+end
+
 function perlmutter_slurm_script_string(infile_prefix::AbstractString, batch_number::Int, index_start::Int, num_per_batch::Int)
     index_end = index_start + num_per_batch - 1
     full_file = string(infile_prefix, "_batch_", batch_number)
     return string("#!/bin/bash
-#SBATCH -A m2101
-#SBATCH -t 12:00:00
+#SBATCH -A m2834
+#SBATCH -t 24:00:00
 #SBATCH -q regular
 #SBATCH -C cpu
 #SBATCH -N 1
@@ -603,8 +662,8 @@ end
 
 function perlmutter_fchk_slurm_script_string()
     return string("#!/bin/bash
-#SBATCH -A m2101
-#SBATCH -t 12:00:00
+#SBATCH -A m2834
+#SBATCH -t 24:00:00
 #SBATCH -q regular
 #SBATCH -C cpu
 #SBATCH -N 1
