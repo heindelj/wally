@@ -1,4 +1,4 @@
-using LinearAlgebra, CSV, DataFrames, Combinatorics
+using LinearAlgebra, CSV, DataFrames, Combinatorics, ProgressBars
 include("read_xyz.jl")
 
 """
@@ -1124,7 +1124,7 @@ function parse_mbe_eda_ion_water_data_and_write_to_csv(csv_outfile::String, xyz_
     all_labels = Vector{String}[]
     all_ion_labels = String[]
     all_num_waters = zeros(length(file_triples))
-    for i in eachindex(file_triples)
+    for i in ProgressBar(eachindex(file_triples))
         full_labels, full_geom, mbe_eda = process_EDA_mbe_ion_water_calculation(
             all_files[file_triples[i][1]],
             all_files[file_triples[i][2]],
