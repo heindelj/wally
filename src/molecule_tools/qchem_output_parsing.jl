@@ -1000,7 +1000,6 @@ function process_EDA_mbe_ion_water_calculation(full_output_file::String, two_bod
     # Make tuples of ion-water and water-water #
     start_ww  = num_ion_water_dimers + 1
     
-    
     elec_2body  = (sum(two_body_eda_data[:cls_elec][1:start_ww-1]), sum(two_body_eda_data[:cls_elec][start_ww:end]))
     pauli_2body = (sum(two_body_eda_data[:mod_pauli][1:start_ww-1]), sum(two_body_eda_data[:mod_pauli][start_ww:end]))
     disp_2body  = (sum(two_body_eda_data[:disp][1:start_ww-1]), sum(two_body_eda_data[:disp][start_ww:end]))
@@ -1134,32 +1133,32 @@ function parse_mbe_eda_ion_water_data_and_write_to_csv(csv_outfile::String, xyz_
         push!(all_geoms, reduce(hcat, full_geom))
         push!(all_labels, full_labels)
         all_pauli_iw[i]    = mbe_eda[:mod_pauli][1]
-        all_pauli_iww[i]   = mbe_eda[:mod_pauli][2]
-        all_pauli_ww[i]    = mbe_eda[:mod_pauli][3]
+        all_pauli_ww[i]    = mbe_eda[:mod_pauli][2]
+        all_pauli_iww[i]   = mbe_eda[:mod_pauli][3]
         all_pauli_www[i]   = mbe_eda[:mod_pauli][4]
         all_pauli_total[i] = mbe_eda[:mod_pauli][5]
 
         all_elec_iw[i]    = mbe_eda[:cls_elec][1]
-        all_elec_iww[i]   = mbe_eda[:cls_elec][2]
-        all_elec_ww[i]    = mbe_eda[:cls_elec][3]
+        all_elec_ww[i]    = mbe_eda[:cls_elec][2]
+        all_elec_iww[i]   = mbe_eda[:cls_elec][3]
         all_elec_www[i]   = mbe_eda[:cls_elec][4]
         all_elec_total[i] = mbe_eda[:cls_elec][5]
 
         all_disp_iw[i]    = mbe_eda[:disp][1]
-        all_disp_iww[i]   = mbe_eda[:disp][2]
-        all_disp_ww[i]    = mbe_eda[:disp][3]
+        all_disp_ww[i]    = mbe_eda[:disp][2]
+        all_disp_iww[i]   = mbe_eda[:disp][3]
         all_disp_www[i]   = mbe_eda[:disp][4]
         all_disp_total[i] = mbe_eda[:disp][5]
 
         all_pol_iw[i]    = mbe_eda[:pol][1]
-        all_pol_iww[i]   = mbe_eda[:pol][2]
-        all_pol_ww[i]    = mbe_eda[:pol][3]
+        all_pol_ww[i]    = mbe_eda[:pol][2]
+        all_pol_iww[i]   = mbe_eda[:pol][3]
         all_pol_www[i]   = mbe_eda[:pol][4]
         all_pol_total[i] = mbe_eda[:pol][5]
 
         all_ct_iw[i]    = mbe_eda[:ct][1]
-        all_ct_iww[i]   = mbe_eda[:ct][2]
-        all_ct_ww[i]    = mbe_eda[:ct][3]
+        all_ct_ww[i]    = mbe_eda[:ct][2]
+        all_ct_iww[i]   = mbe_eda[:ct][3]
         all_ct_www[i]   = mbe_eda[:ct][4]
         all_ct_total[i] = mbe_eda[:ct][5]
 
