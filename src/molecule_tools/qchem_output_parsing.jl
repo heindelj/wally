@@ -1046,6 +1046,105 @@ function process_EDA_mbe_ion_water_calculation(full_output_file::String, two_bod
     return labels[1], [MVector{3, Float64}(coords[1][:, i]) for i in eachindex(eachcol(coords[1]))], total_eda_data
 end
 
+function process_EDA_mbe_ion_water_calculation_into_all_many_body_terms(full_output_file::String, two_body_output_file::String, three_body_output_file::String)
+
+    eda_data = Dict(
+        :cls_elec => Float64[],
+        :mod_pauli => Float64[],
+        :disp => Float64[],
+        :pol => Float64[],
+        :ct => Float64[]
+    )
+    dimer_labels, dimer_coords = parse_xyz_and_eda_from_output!(two_body_output_file, eda_data)
+    
+    map!(x->Float64[], values(eda_data))
+    trimer_labels, trimer_coords = parse_xyz_and_eda_from_output!(three_body_output_file, eda_data)
+    map!(x->Float64[], values(eda_data))
+    labels, coords = parse_xyz_and_eda_from_output!(full_output_file, eda_data)
+    
+    # Everything in here assumes there is a single ion and the rest is water and
+    # that ion comes at the beginning of the xyz coordinates.
+    num_fragments = ((length(labels[1]) - 1) ÷ 3) + 1
+    num_dimers = length(dimer_coords)
+    num_expected_dimers = binomial(num_fragments, 2)
+    num_trimers = length(trimer_coords)
+    num_expected_trimers = binomial(num_fragments, 3)
+    @assert binomial(num_fragments, 2) == num_dimers "Parsed $num_dimers but expected $num_expected_dimers based on there being $num_fragments fragments."
+    @assert binomial(num_fragments, 3) == num_trimers "Parsed $num_trimers but expected $num_expected_trimers based on there being $num_fragments fragments."
+
+    num_ion_water_dimers    = binomial(num_fragments-1, 1)
+    num_ion_water_trimers   = binomial(num_fragments-1, 2)
+
+    two_body_eda_data = Dict(
+        :cls_elec => Float64[],
+        :mod_pauli => Float64[],
+        :disp => Float64[],
+        :pol => Float64[],
+        :ct => Float64[],
+    )
+
+    three_body_eda_data = Dict(
+        :cls_elec => Float64[],
+        :mod_pauli => Float64[],
+        :disp => Float64[],
+        :pol => Float64[],
+        :ct => Float64[],
+    )
+
+    # Parse two and three body contributions to EDA MBE #
+    parse_EDA_terms!(two_body_eda_data, two_body_output_file, false)
+    parse_EDA_terms!(three_body_eda_data, three_body_output_file, false)
+
+    # make map of fragment indices to linear dimer index and linear trimer index
+    dimer_map  = Dict{Tuple{Int, Int}, Int}()
+    trimer_map = Dict{Tuple{Int, Int, Int}, Int}()
+    i_linear = 1
+    for i in 1:num_fragments-1
+        for j in (i+1):num_fragments
+            dimer_map[(i, j)] = i_linear
+            i_linear += 1
+        end
+    end
+    i_linear = 1
+    for i in 1:num_fragments-2
+        for j in (i+1):num_fragments-1
+            for k in (j+1):num_fragments
+                trimer_map[(i, j, k)] = i_linear
+                i_linear += 1
+            end
+        end
+    end
+    
+    # add 3-body keys to trimer dict #
+    for key in keys(two_body_eda_data) # because we don't add keys to two_body_eda_data and it has the same original keys as three_body_eda_dict
+        three_body_eda_data[Symbol(key, :_3b)] = zeros(length(three_body_eda_data[key]))
+    end
+    # Get non-additive contributions to each trimer #
+    for i in 1:num_fragments-2
+        for j in (i+1):num_fragments-1
+            for k in (j+1):num_fragments
+                i_trimer = trimer_map[(i, j, k)]
+                i_dimer_1 = dimer_map[(i, j)]
+                i_dimer_2 = dimer_map[(i, k)]
+                i_dimer_3 = dimer_map[(j, k)]
+                for key in keys(two_body_eda_data)
+                    e_3b = three_body_eda_data[key][i_trimer] - two_body_eda_data[key][i_dimer_1] - two_body_eda_data[key][i_dimer_2] - two_body_eda_data[key][i_dimer_3]
+                    three_body_eda_data[Symbol(key, :_3b)][i_trimer] = e_3b
+                end
+            end
+        end
+    end
+    three_body_eda_data[:has_ion] = [i <= num_ion_water_trimers ? true : false for i in 1:num_trimers]
+
+    # get dimer, trimer, and full coordinates in format to return
+    dimer_coords_out = [[MVector{3, Float64}(dimer_coords[i_geom][:, i]) for i in eachindex(eachcol(dimer_coords[i_geom]))] for i_geom in eachindex(dimer_coords)]
+    trimer_coords_out = [[MVector{3, Float64}(trimer_coords[i_geom][:, i]) for i in eachindex(eachcol(trimer_coords[i_geom]))] for i_geom in eachindex(trimer_coords)]
+    full_system_labels = labels[1]
+    full_system_coords = [MVector{3, Float64}(coords[1][:, i]) for i in eachindex(eachcol(coords[1]))]
+
+    return dimer_labels, dimer_coords_out, trimer_labels, trimer_coords_out, full_system_labels, full_system_coords, two_body_eda_data, three_body_eda_data, eda_data
+end
+
 function parse_mbe_eda_ion_water_data_and_write_to_csv(csv_outfile::String, xyz_outfile::String)
 
     all_files = readdir()
@@ -1201,4 +1300,148 @@ function parse_mbe_eda_ion_water_data_and_write_to_csv(csv_outfile::String, xyz_
     write_xyz(xyz_outfile, [string(length(all_labels[i]), "\n") for i in eachindex(all_labels)], all_labels, all_geoms)
     CSV.write(csv_outfile, df)
     return
+end
+
+function parse_mbe_eda_ion_water_data_without_combining_and_write_to_csv(csv_outfile::String, xyz_outfile::String, mandatory_substring::Union{String, Nothing}=nothing)
+
+    all_files = readdir()
+    full_system_files = Int[]
+    two_body_files = Int[]
+    three_body_files = Int[]
+    for i in eachindex(all_files)
+        if mandatory_substring === nothing || occursin(mandatory_substring, all_files[i])
+            if occursin("full_system", all_files[i])
+                push!(full_system_files, i)
+            end
+            if occursin("2_body", all_files[i])
+                push!(two_body_files, i)
+            end
+            if occursin("3_body", all_files[i])
+                push!(three_body_files, i)
+            end
+        end
+    end
+
+    file_triples = Tuple{Int, Int, Int}[]
+    for i_full in full_system_files
+        full_system_file = all_files[i_full]
+        two_body_file_index = 0
+        three_body_file_index = 0
+
+        two_body_file_prefix = split(full_system_file, "_full_system.out")[1]
+        three_body_file_prefix = split(full_system_file, "_full_system.out")[1]
+        for i_two_body in two_body_files
+            if occursin(two_body_file_prefix, all_files[i_two_body])
+                two_body_file_index = i_two_body
+                break
+            end
+        end
+        for i_three_body in three_body_files
+            if occursin(three_body_file_prefix, all_files[i_three_body])
+                three_body_file_index = i_three_body
+                break
+            end
+        end
+        if (two_body_file_index > 0 && three_body_file_index > 0)
+            push!(file_triples, (i_full, two_body_file_index, three_body_file_index))
+        end
+    end
+
+    all_pauli_dimers = Float64[]
+    all_disp_dimers = Float64[]
+    all_elec_dimers = Float64[]
+    all_pol_dimers = Float64[]
+    all_ct_dimers = Float64[]
+    all_int_dimers = Float64[]
+
+    all_pauli_trimers = Float64[]
+    all_pauli_trimers_3b = Float64[]
+    all_disp_trimers = Float64[]
+    all_disp_trimers_3b = Float64[]
+    all_elec_trimers = Float64[]
+    all_elec_trimers_3b = Float64[]
+    all_pol_trimers = Float64[]
+    all_pol_trimers_3b = Float64[]
+    all_ct_trimers = Float64[]
+    all_ct_trimers_3b = Float64[]
+    all_int_trimers = Float64[]
+    all_int_trimers_3b = Float64[]
+
+    all_dimer_geoms = Matrix{Float64}[]
+    all_dimer_labels = Vector{String}[]
+    all_trimer_geoms = Matrix{Float64}[]
+    all_trimer_labels = Vector{String}[]
+    for i in ProgressBar(eachindex(file_triples))
+        # ...... That's a lot of things ...... #
+        dimer_labels, dimer_coords_out, trimer_labels, trimer_coords_out,
+        _, _, two_body_eda_data, three_body_eda_data, _ = process_EDA_mbe_ion_water_calculation_into_all_many_body_terms(
+            all_files[file_triples[i][1]],
+            all_files[file_triples[i][2]],
+            all_files[file_triples[i][3]]
+        )
+        append!(all_dimer_labels, dimer_labels)
+        append!(all_dimer_geoms, [reduce(hcat, dimer_geom) for dimer_geom in dimer_coords_out])
+        append!(all_trimer_labels, trimer_labels)
+        append!(all_trimer_geoms, [reduce(hcat, trimer_geom) for trimer_geom in trimer_coords_out])
+
+        for key in keys(two_body_eda_data)
+            if key == :cls_elec
+                append!(all_elec_dimers, two_body_eda_data[key])
+            elseif key == :mod_pauli
+                append!(all_pauli_dimers, two_body_eda_data[key])
+            elseif key == :disp
+                append!(all_disp_dimers, two_body_eda_data[key])
+            elseif key == :pol
+                append!(all_pol_dimers, two_body_eda_data[key])
+            elseif key == :ct
+                append!(all_ct_dimers, two_body_eda_data[key])
+            end
+        end
+        for key in keys(three_body_eda_data)
+            if key == :cls_elec
+                append!(all_elec_trimers, three_body_eda_data[key])
+            elseif key == :mod_pauli
+                append!(all_pauli_trimers, three_body_eda_data[key])
+            elseif key == :disp
+                append!(all_disp_trimers, three_body_eda_data[key])
+            elseif key == :pol
+                append!(all_pol_trimers, three_body_eda_data[key])
+            elseif key == :ct
+                append!(all_ct_trimers, three_body_eda_data[key])
+            elseif key == :cls_elec_3b
+                append!(all_elec_trimers_3b, three_body_eda_data[key])
+            elseif key == :mod_pauli_3b
+                append!(all_pauli_trimers_3b, three_body_eda_data[key])
+            elseif key == :disp_3b
+                append!(all_disp_trimers_3b, three_body_eda_data[key])
+            elseif key == :pol_3b
+                append!(all_pol_trimers_3b, three_body_eda_data[key])
+            elseif key == :ct_3b
+                append!(all_ct_trimers_3b, three_body_eda_data[key])
+            end
+        end
+    end
+
+    all_dimer_data = Dict(
+        :cls_elec => all_elec_dimers,
+        :mod_pauli => all_pauli_dimers,
+        :disp => all_disp_dimers,
+        :pol => all_pol_dimers,
+        :ct => all_ct_dimers,
+    )
+
+    all_trimer_data = Dict(
+        :cls_elec => all_elec_trimers,
+        :cls_elec_3b => all_elec_trimers_3b,
+        :mod_pauli => all_pauli_trimers,
+        :mod_pauli_3b => all_pauli_trimers_3b,
+        :disp => all_disp_trimers,
+        :disp_3b => all_disp_trimers_3b,
+        :pol => all_pol_trimers,
+        :pol_3b => all_pol_trimers_3b,
+        :ct => all_ct_trimers,
+        :ct_3b => all_ct_trimers_3b,
+    )
+
+    return all_dimer_data, all_trimer_data
 end
