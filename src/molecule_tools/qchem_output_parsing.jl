@@ -1134,6 +1134,7 @@ function process_EDA_mbe_ion_water_calculation_into_all_many_body_terms(full_out
             end
         end
     end
+    two_body_eda_data[:has_ion]   = [i <= num_ion_water_dimers ? true : false for i in 1:num_dimers]
     three_body_eda_data[:has_ion] = [i <= num_ion_water_trimers ? true : false for i in 1:num_trimers]
 
     # get dimer, trimer, and full coordinates in format to return
@@ -1302,7 +1303,11 @@ function parse_mbe_eda_ion_water_data_and_write_to_csv(csv_outfile::String, xyz_
     return
 end
 
-function parse_mbe_eda_ion_water_data_without_combining_and_write_to_csv(csv_outfile::String, xyz_outfile::String, mandatory_substring::Union{String, Nothing}=nothing)
+function parse_mbe_eda_ion_water_data_without_combining_and_write_to_csv(
+    csv_outfile_dimers::String, xyz_outfile_dimers::String,
+    csv_outfile_trimers::String, xyz_outfile_trimers::String,
+    mandatory_substring::Union{String, Nothing}=nothing
+)
 
     all_files = readdir()
     full_system_files = Int[]
@@ -1352,7 +1357,7 @@ function parse_mbe_eda_ion_water_data_without_combining_and_write_to_csv(csv_out
     all_elec_dimers = Float64[]
     all_pol_dimers = Float64[]
     all_ct_dimers = Float64[]
-    all_int_dimers = Float64[]
+    all_has_ion_dimers = Float64[]
 
     all_pauli_trimers = Float64[]
     all_pauli_trimers_3b = Float64[]
@@ -1364,8 +1369,7 @@ function parse_mbe_eda_ion_water_data_without_combining_and_write_to_csv(csv_out
     all_pol_trimers_3b = Float64[]
     all_ct_trimers = Float64[]
     all_ct_trimers_3b = Float64[]
-    all_int_trimers = Float64[]
-    all_int_trimers_3b = Float64[]
+    all_has_ion_trimers = Float64[]
 
     all_dimer_geoms = Matrix{Float64}[]
     all_dimer_labels = Vector{String}[]
@@ -1395,6 +1399,8 @@ function parse_mbe_eda_ion_water_data_without_combining_and_write_to_csv(csv_out
                 append!(all_pol_dimers, two_body_eda_data[key])
             elseif key == :ct
                 append!(all_ct_dimers, two_body_eda_data[key])
+            elseif key == :has_ion
+                append!(all_has_ion_dimers, two_body_eda_data[key])
             end
         end
         for key in keys(three_body_eda_data)
@@ -1418,6 +1424,8 @@ function parse_mbe_eda_ion_water_data_without_combining_and_write_to_csv(csv_out
                 append!(all_pol_trimers_3b, three_body_eda_data[key])
             elseif key == :ct_3b
                 append!(all_ct_trimers_3b, three_body_eda_data[key])
+            elseif key == :has_ion
+                append!(all_has_ion_trimers, three_body_eda_data[key])
             end
         end
     end
@@ -1428,6 +1436,8 @@ function parse_mbe_eda_ion_water_data_without_combining_and_write_to_csv(csv_out
         :disp => all_disp_dimers,
         :pol => all_pol_dimers,
         :ct => all_ct_dimers,
+        :int => all_elec_dimers + all_pauli_dimers + all_disp_dimers + all_pol_dimers + all_ct_dimers,
+        :has_ion => all_has_ion_dimers
     )
 
     all_trimer_data = Dict(
@@ -1441,7 +1451,20 @@ function parse_mbe_eda_ion_water_data_without_combining_and_write_to_csv(csv_out
         :pol_3b => all_pol_trimers_3b,
         :ct => all_ct_trimers,
         :ct_3b => all_ct_trimers_3b,
+        :int => all_elec_trimers + all_pauli_trimers + all_disp_trimers + all_pol_trimers + all_ct_trimers,
+        :int_3b => all_elec_trimers_3b + all_pauli_trimers_3b + all_disp_trimers_3b + all_pol_trimers_3b + all_ct_trimers_3b,
+        :has_ion => all_has_ion_trimers
     )
 
-    return all_dimer_data, all_trimer_data
+    df_2b = DataFrame(all_dimer_data)
+    df_3b = DataFrame(all_trimer_data)
+    geom_index = [1:nrow(df_2b)...]
+    df_2b[!, :index] = geom_index
+    geom_index = [1:nrow(df_3b)...]
+    df_3b[!, :index] = geom_index
+    write_xyz(xyz_outfile_dimers, [string(length(all_dimer_labels[i]), "\n") for i in eachindex(all_dimer_labels)], all_dimer_labels, all_dimer_geoms)
+    CSV.write(csv_outfile_dimers, df_2b)
+    write_xyz(xyz_outfile_trimers, [string(length(all_trimer_labels[i]), "\n") for i in eachindex(all_trimer_labels)], all_trimer_labels, all_trimer_geoms)
+    CSV.write(csv_outfile_trimers, df_3b)
+    return
 end
