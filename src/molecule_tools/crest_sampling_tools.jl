@@ -8,24 +8,37 @@ Takes a geometry of water molecules and replaces the location of one of the wate
 with an ion.
 """
 function replace_random_water_with_ion(coords::Matrix{Float64}, labels::Vector{String}, ion_label::String)
-    @assert length(labels) % 3 == 0 "Number of atoms is not divisible by three. This isn't water. Can handle this case but code needs to be modified."
-    water_coords = get_array_of_waters(coords, labels)
+    water_indices = Int[]
+    for i in eachindex(labels)
+        if labels[i] == "O" || labels[i] == "H"
+            push!(water_indices, i)
+        end
+    end
+    non_water_indices = setdiff(1:length(labels), water_indices)
+
+    water_coords = get_array_of_waters(coords[:, water_indices], labels[water_indices])
 
     random_index = rand(1:length(water_coords))
-    out_coords = zeros(3, length(labels) - 2) # subtract three for removing water add one for ion
+    out_coords = zeros(3, length(labels) - 2) # subtract three for removing water then add one for ion
     i_water = 1
-    out_labels = [ion_label]
+    num_indices_used = 0
+    out_labels = ["" for _ in 1:(length(labels)-2)]
     for i in eachindex(water_coords)
         if i != random_index
-            out_coords[:, (3*i_water-1):(3*i_water+1)] = water_coords[i]
-            append!(out_labels, ["O", "H", "H"])
-
+            out_coords[:, (3*(i_water-1)+1):(3*i_water)] = water_coords[i]
+            out_labels[(3*(i_water-1)+1):(3*i_water)] = ["O", "H", "H"]
+            num_indices_used += 3
             i_water += 1
         else
             ion_position = centroid(water_coords[i])
-            out_coords[:, 1] = ion_position
+            out_coords[:, 3*(length(water_coords)-1)+1] = ion_position
+            out_labels[3*(length(water_coords)-1)+1] = ion_label
+            num_indices_used += 1
         end
     end
+    # now add all of the non-water stuff that came with the cluster into the arrays we send back
+    out_labels[(num_indices_used+1):end] = labels[non_water_indices]
+    @views out_coords[:, (num_indices_used+1):end] = coords[:, non_water_indices]
     return out_labels, out_coords
 end
 
@@ -33,6 +46,15 @@ function set_up_crest_sampling(seed_coordinates::Matrix{Float64}, seed_labels::V
     for i in 1:num_sampling_runs
         mkpath(string("sample_", i))
         ion_water_labels, ion_water_coords = replace_random_water_with_ion(seed_coordinates, seed_labels, ion_label)
+        write_xyz(string("sample_", i, "/ion_water_config_guess_", i, ".xyz"), ion_water_labels, ion_water_coords)
+    end
+end
+
+function set_up_crest_sampling(seed_coordinates::Vector{Matrix{Float64}}, seed_labels::Vector{Vector{String}}, ion_label::String, num_sampling_runs::Int)
+    rand_indices = rand(1:length(seed_coordinates), num_sampling_runs)
+    for i in 1:num_sampling_runs
+        mkpath(string("sample_", i))
+        ion_water_labels, ion_water_coords = replace_random_water_with_ion(seed_coordinates[rand_indices[i]], seed_labels[rand_indices[i]], ion_label)
         write_xyz(string("sample_", i, "/ion_water_config_guess_", i, ".xyz"), ion_water_labels, ion_water_coords)
     end
 end
