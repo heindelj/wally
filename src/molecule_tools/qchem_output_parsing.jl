@@ -228,13 +228,14 @@ function parse_relaxed_scan(output_file::String)
     all_geoms = Matrix{Float64}[]
     for (i, line) in enumerate(lines)
         if occursin("CONVERGED", line)
-            line_index = i + 6
+            line_index = i + 5
             natoms = 0
-            while !occursin("------------", lines[line_index])
+            while !occursin("Z-matrix", lines[line_index])
                 natoms += 1
                 line_index += 1
             end
-            line_index = i + 6
+            natoms -= 1 # we count a blank line before getting to Z-matrix
+            line_index = i + 5
             labels = ["" for _ in 1:natoms]
             geom = zeros(3, natoms)
             for i_geom in 1:natoms
