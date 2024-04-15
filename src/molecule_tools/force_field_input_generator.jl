@@ -541,6 +541,21 @@ function generate_ion_water_cluster_optimization_inputs(file_prefix::String, geo
     end
 end
 
+"""
+Generates copies of a coordinate matrix with appropriate displaced geometries
+for doing a finite difference force calculation.
+"""
+function get_finite_difference_structures(coords::Matrix{Float64}, step_size=1e-3)
+    fd_coords = [copy(coords) for _ in 1:(2*length(coords))]
+    dof_index = 1
+    for i in 1:2:length(fd_coords)
+        fd_coords[i][dof_index] += step_size
+        fd_coords[i+1][dof_index] -= step_size
+        dof_index += 1
+    end
+    return fd_coords
+end
+
 function write_electrostatic_potential_input(infile_name::String, coords::Vector{MVector{3, Float64}}, labels::Vector{String}, charge::Int, multplicity::Int, min_factor_of_vdw_radius::Float64=0.9, max_factor_of_vdw_radius::Float64=1.5)
     esp_grid = generate_electrostatic_potential_grid(coords, labels, min_factor_of_vdw_radius, max_factor_of_vdw_radius)
     esp_grid /= 0.529177

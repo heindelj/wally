@@ -222,6 +222,34 @@ function parse_geometry_optimization(output_file::String)
     end
 end
 
+function parse_relaxed_scan(output_file::String)
+    lines = readlines(output_file)
+    all_labels = Vector{String}[]
+    all_geoms = Matrix{Float64}[]
+    for (i, line) in enumerate(lines)
+        if occursin("CONVERGED", line)
+            line_index = i + 6
+            natoms = 0
+            while !occursin("------------", lines[line_index])
+                natoms += 1
+                line_index += 1
+            end
+            line_index = i + 6
+            labels = ["" for _ in 1:natoms]
+            geom = zeros(3, natoms)
+            for i_geom in 1:natoms
+                split_line = split(lines[line_index])
+                labels[i_geom] = split_line[2]
+                @views geom[:, i_geom] = tryparse.((Float64,), split_line[3:5])
+                line_index += 1
+            end
+            push!(all_labels, labels)
+            push!(all_geoms, geom)
+        end
+    end
+    return all_labels, all_geoms
+end
+
 """
 Parses the geometries used by Q-Chem in a calculation.
 Generically, these may be different than what was input by
