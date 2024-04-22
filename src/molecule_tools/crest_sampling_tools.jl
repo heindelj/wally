@@ -73,7 +73,7 @@ function run_crest_sampling(charge::Int, gfn::Int=2)
     end
 end
 
-function identify_and_write_unique_geoms(xyz_outfile::String, energy_threshold::Float64=0.025)
+function identify_and_write_unique_geoms(xyz_outfile::String, energy_threshold::Float64=0.025, max_energy::Float64=20.0)
     all_files_and_folders = readdir()
 
     all_geoms = Matrix{Float64}[]
@@ -85,9 +85,13 @@ function identify_and_write_unique_geoms(xyz_outfile::String, energy_threshold::
             if isfile("crest_conformers.xyz")
                 headers, labels, geoms = read_xyz("crest_conformers.xyz")
                 energies = [parse(Float64, split(header)[2]) for header in headers]
-                append!(all_geoms, geoms)
-                append!(all_labels, labels)
-                append!(all_energies, energies)
+                for i in eachindex(energies)
+                    if ((energies[i] - minimum(energies)) * 627.51) < max_energy
+                        push!(all_geoms, geoms[i])
+                        push!(all_labels, labels[i])
+                        push!(all_energies, energies[i])
+                    end
+                end
             end
             cd("..")
         end
