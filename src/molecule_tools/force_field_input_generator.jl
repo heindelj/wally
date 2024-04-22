@@ -506,7 +506,6 @@ function generate_ion_triples_optimization_input()
 end
 
 function generate_ion_water_cluster_optimization_inputs(file_prefix::String, geoms::Vector{Matrix{Float64}}, labels::Vector{Vector{String}}, num_geoms_to_opt::Int=10)
-    
     # always store the first graph since it is the lowest in energy
     unique_geom_indices = Int[]
     graphs = MolecularGraph[]

@@ -82,11 +82,13 @@ function identify_and_write_unique_geoms(xyz_outfile::String, energy_threshold::
     for folder in all_files_and_folders
         if isdir(folder) && contains(folder, "sample_")
             cd(folder)
-            headers, labels, geoms = read_xyz("crest_conformers.xyz")
-            energies = [parse(Float64, split(header)[2]) for header in headers]
-            append!(all_geoms, geoms)
-            append!(all_labels, labels)
-            append!(all_energies, energies)
+            if isfile("crest_conformers.xyz")
+                headers, labels, geoms = read_xyz("crest_conformers.xyz")
+                energies = [parse(Float64, split(header)[2]) for header in headers]
+                append!(all_geoms, geoms)
+                append!(all_labels, labels)
+                append!(all_energies, energies)
+            end
             cd("..")
         end
     end

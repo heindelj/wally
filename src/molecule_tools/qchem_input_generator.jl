@@ -200,7 +200,6 @@ end
 
 """
 Writes input files for arbitrary order of the MBE. All fragments of an order go in the same file.
-Currently all fragments must be neutral and closed shell.
 """
 function write_mbe_inputs(
     infile_name::String,
