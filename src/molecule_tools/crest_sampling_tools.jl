@@ -89,7 +89,7 @@ function identify_and_write_unique_geoms(xyz_outfile::String, energy_threshold::
                     if ((energies[i] - minimum(energies)) * 627.51) < max_energy
                         push!(all_geoms, geoms[i])
                         push!(all_labels, labels[i])
-                        push!(all_energies, energies[i])
+                        push!(all_energies, (energies[i] - minimum(energies)) * 627.51)
                     end
                 end
             end
@@ -99,8 +99,7 @@ function identify_and_write_unique_geoms(xyz_outfile::String, energy_threshold::
     sorted_by_energies = sortperm(all_energies)
     all_geoms = all_geoms[sorted_by_energies]
     all_labels = all_labels[sorted_by_energies]
-    all_energies = all_energies[sorted_by_energies] .* 627.51
-    all_energies .-= all_energies[1]
+    all_energies = all_energies[sorted_by_energies]
     unique_geom_bitmap = zeros(Int, Int(floor(all_energies[end] / energy_threshold) + 1))
 
     indices_to_keep = Int[]
