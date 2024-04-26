@@ -1,6 +1,7 @@
-using Rotations, Sobol, Distributions
+using Rotations, Sobol, Distributions, Combinatorics
 include("molecular_axes.jl")
 include("vdw_radii.jl")
+include("molecular_cluster.jl")
 
 """
 Takes two fragments and a direction vector (we normalize it to be sure),
@@ -339,6 +340,59 @@ function sample_psuedorandom_dimers_in_spheres(
     return all_labels, all_geoms
 end
 
-function sample_nmers_from_cluster(coords::Matrix{Float64}, labels::Vector{String}, n_nodes::Int)
+"""
+Given a structure, the system will be divided into fragment based on covalent radii.
+All n-mers matching the set of labels provided in desired_fragment_labels will be returned.
+The n-mers will be sorted by the sum of center of mass distances of each fragment.
+"""
+function sample_nmers_from_cluster_by_formula(coords::Matrix{Float64}, labels::Vector{String}, n_nodes::Int, desired_fragment_labels::Vector{String})
+    cluster = build_cluster(coords, labels)
+
+    # Figure out how many of each element should appear in the final structure
+    num_labels_dict = Dict{String, Int}()
+    for i in eachindex(desired_fragment_labels)
+        if haskey(num_labels_dict, desired_fragment_labels[i])
+            num_labels_dict[desired_fragment_labels[i]] += 1
+        else
+            num_labels_dict[desired_fragment_labels[i]] = 1
+        end
+    end
+
+    num_labels_per_fragment = Dict{String, Int}[]
+    for i in eachindex(cluster.indices)
+        fragment_label_counts = Dict{String, Int}()
+        for label in labels
+            if !haskey(fragment_label_counts, label)
+                fragment_label_counts[label] = count(==(label), labels[cluster.indices[i]])
+            end
+        end
+        push!(num_labels_per_fragment, fragment_label_counts)
+    end
     
+    all_subcluster_geoms = Matrix{Float64}[]
+    all_subcluster_labels = Vector{String}[]
+    combination_iterator = combinations(1:length(cluster.indices), n_nodes)
+    summed_center_of_mass_distances = zeros(length(all_subcluster_geoms))
+    for comb in combination_iterator
+        num_labels_dict_temp = Dict{String, Int}()
+        proposed_labels = String[]
+        for i_frag in comb
+            append!(proposed_labels, cluster.labels[cluster.indices[i_frag]])
+        end
+        for label in proposed_labels
+            if !haskey(num_labels_dict_temp, label)
+                num_labels_dict_temp[label] = count(==(label), proposed_labels)
+            end
+        end
+        if num_labels_dict_temp == num_labels_dict
+            indices = reduce(vcat, [cluster.indices[index] for index in comb])
+            push!(all_subcluster_geoms, cluster.geom[:, indices])
+            push!(all_subcluster_labels, cluster.labels[indices])
+            total_com = reduce(vcat, center_of_mass(all_subcluster_geoms[end], all_subcluster_labels[end]))
+            summed_com_dist = sum([norm(cluster.centers[i_comb] - total_com) for i_comb in comb])
+            push!(summed_center_of_mass_distances, summed_com_dist)
+        end
+    end
+    sorted_indices = sortperm(summed_center_of_mass_distances)
+    return all_subcluster_labels[sorted_indices], all_subcluster_geoms[sorted_indices]
 end
