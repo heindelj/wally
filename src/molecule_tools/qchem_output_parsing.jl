@@ -1,4 +1,4 @@
-using LinearAlgebra, CSV, DataFrames, Combinatorics, ProgressBars
+using LinearAlgebra, CSV, DataFrames, Combinatorics, ProgressBars, ProgressMeter
 include("read_xyz.jl")
 
 """
