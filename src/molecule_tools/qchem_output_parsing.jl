@@ -195,6 +195,19 @@ function parse_geometries(output_file::String)
     return labels, geometries
 end
 
+function parse_final_geometry_from_output_files(output_files::Vector{String})
+    all_labels = Vector{String}[]
+    all_geoms = Matrix{Float64}[]
+    @showprogress for file in output_files
+        if occursin(".out", file)
+            labels, geoms = parse_geometries(file)
+            push!(all_labels, labels[end])
+            push!(all_geoms, geoms[end])
+        end
+    end
+    return all_labels, all_geoms
+end
+
 """
 Parses the geometry from a Q-Chem optimization.
 """
