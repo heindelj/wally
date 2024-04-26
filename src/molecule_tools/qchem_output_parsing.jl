@@ -198,7 +198,7 @@ end
 function parse_final_geometry_from_output_files(output_files::Vector{String})
     all_labels = Vector{String}[]
     all_geoms = Matrix{Float64}[]
-    @showprogress for i in eachindex(output_files)
+    for i in ProgressBar(eachindex(output_files))
         if occursin(".out", output_files[i])
             labels, geoms = parse_geometries(output_files[i])
             push!(all_labels, labels[end])
