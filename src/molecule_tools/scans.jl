@@ -2,6 +2,23 @@ using LinearAlgebra, Rotations
 include("molecular_graph.jl")
 include("molecular_axes.jl")
 
+function distance_scan_from_point(coords::Matrix{Float64}, index::Int, point::Vector{Float64}, Δr_left::Float64=-0.3, Δr_right::Float64=0.5, nsteps::Int=9; aux_indices::Union{Vector{Int}, Nothing}=nothing)
+    @views r_ij = coords[:, index] - point
+    coords_out = [copy(coords) for _ in 1:nsteps]
+
+    displacements = LinRange(Δr_left, Δr_right, nsteps)
+    t = [(norm(r_ij) + Δx) / norm(r_ij) for Δx in displacements]
+    for i in 1:length(displacements)
+        @views coords_out[i][:, index] = coords_out[i][:, index] + (t[i] - 1.0) * r_ij
+        if aux_indices !== nothing
+            for i_aux_1 in aux_indices
+                @views coords_out[i][:, i_aux_1] += (t[i] - 1.0) * r_ij
+            end
+        end
+    end
+    return coords_out
+end
+
 function distance_scan(coords::Matrix{Float64}, indices::Tuple{Int, Int}, Δr_left::Float64=-0.3, Δr_right::Float64=0.5, nsteps::Int=9; aux_indices::Union{Tuple{Vector{Int}, Vector{Int}}, Nothing}=nothing, only_move_atom_1::Bool=false)
     """
     Scans along a bond determined by two indices into the coords
@@ -28,11 +45,20 @@ function distance_scan(coords::Matrix{Float64}, indices::Tuple{Int, Int}, Δr_le
             @views coords_out[i][:, indices[1]] = coords_out[i][:, indices[1]] + 2.0 * (t[i] - 1.0) * r_ij
         end
         if aux_indices !== nothing
-            for i_aux_1 in aux_indices[1]
-                @views coords_out[i][:, i_aux_1] += (t[i] - 1.0) * r_ij
-            end
-            for i_aux_2 in aux_indices[2]
-                @views coords_out[i][:, i_aux_2] += (coords_out[i][:, indices[2]] - coords_out[i][:, indices[1]] + t[i] * r_ij)
+            if !only_move_atom_1
+                for i_aux_1 in aux_indices[1]
+                    @views coords_out[i][:, i_aux_1] += 2 * (t[i] - 1.0) * r_ij
+                end
+                for i_aux_2 in aux_indices[2]
+                    @views coords_out[i][:, i_aux_2] += (coords_out[i][:, indices[2]] - coords_out[i][:, indices[1]] + t[i] * r_ij)
+                end
+            else
+                for i_aux_1 in aux_indices[1]
+                    @views coords_out[i][:, i_aux_1] += 2 * (t[i] - 1.0) * r_ij
+                end
+                for i_aux_2 in aux_indices[2]
+                    @views coords_out[i][:, i_aux_2] += (coords_out[i][:, indices[2]] - coords_out[i][:, indices[1]] + t[i] * r_ij)
+                end
             end
         end
     end

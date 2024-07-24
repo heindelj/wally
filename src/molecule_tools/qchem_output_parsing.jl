@@ -989,6 +989,75 @@ function process_EDA_mbe_calculation(full_output_file::String, mbe_output_files:
     return labels[1], [MVector{3, Float64}(coords[1][:, i]) for i in eachindex(eachcol(coords[1]))], total_eda_data
 end
 
+function convert_parsed_eda_data_to_linear_format(eda_data::Vector{Dict{Symbol, Vector{Float64}}})
+    all_pauli_energies = zeros(length(eda_data))
+    all_pauli_2_body_energies = zeros(length(eda_data))
+    all_pauli_3_body_energies = zeros(length(eda_data))
+    all_elec_energies = zeros(length(eda_data))
+    all_disp_energies = zeros(length(eda_data))
+    all_disp_2_body_energies = zeros(length(eda_data))
+    all_disp_3_body_energies = zeros(length(eda_data))
+    all_pol_energies = zeros(length(eda_data))
+    all_pol_2_body_energies = zeros(length(eda_data))
+    all_pol_3_body_energies = zeros(length(eda_data))
+    all_ct_energies = zeros(length(eda_data))
+    all_ct_2_body_energies = zeros(length(eda_data))
+    all_ct_3_body_energies = zeros(length(eda_data))
+    all_int_energies = zeros(length(eda_data))
+    all_int_2_body_energies = zeros(length(eda_data))
+    all_int_3_body_energies = zeros(length(eda_data))
+    all_total_energies = zeros(length(eda_data))
+    all_total_2_body_energies = zeros(length(eda_data))
+    all_total_3_body_energies = zeros(length(eda_data))
+
+    for i in eachindex(eda_data)
+        all_pauli_energies[i] = eda_data[i][:mod_pauli][2]
+        all_pauli_2_body_energies[i] = eda_data[i][:mod_pauli][1]
+        all_pauli_3_body_energies[i] = eda_data[i][:mod_pauli][3]
+        all_elec_energies[i] = eda_data[i][:cls_elec][1]
+        all_disp_energies[i] = eda_data[i][:disp][2]
+        all_disp_2_body_energies[i] = eda_data[i][:disp][1]
+        all_disp_3_body_energies[i] = eda_data[i][:disp][3]
+        all_pol_energies[i] = eda_data[i][:pol][2]
+        all_pol_2_body_energies[i] = eda_data[i][:pol][1]
+        all_pol_3_body_energies[i] = eda_data[i][:pol][3]
+        all_ct_energies[i] = eda_data[i][:ct][2]
+        all_ct_2_body_energies[i] = eda_data[i][:ct][1]
+        all_ct_3_body_energies[i] = eda_data[i][:ct][3]
+        all_int_energies[i] = eda_data[i][:int][2]
+        all_int_2_body_energies[i] = eda_data[i][:int][1]
+        all_int_3_body_energies[i] = eda_data[i][:int][3]
+        all_total_energies[i] = eda_data[i][:total][2]
+        all_total_2_body_energies[i] = eda_data[i][:total][1]
+        all_total_3_body_energies[i] = eda_data[i][:total][3]
+    end
+
+    df = DataFrame(
+        :mod_pauli => all_pauli_energies,
+        :mod_pauli_2b => all_pauli_2_body_energies,
+        :mod_pauli_3b => all_pauli_3_body_energies,
+        :cls_elec => all_elec_energies,
+        :disp => all_disp_energies,
+        :disp_2b => all_disp_2_body_energies,
+        :disp_3b => all_disp_3_body_energies,
+        :pol => all_pol_energies,
+        :pol_2b => all_pol_2_body_energies,
+        :pol_3b => all_pol_3_body_energies,
+        :ct => all_ct_energies,
+        :ct_2b => all_ct_2_body_energies,
+        :ct_3b => all_ct_3_body_energies,
+        :int => all_int_energies,
+        :int_2b => all_int_2_body_energies,
+        :int_3b => all_int_3_body_energies,
+        :total => all_total_energies,
+        :total_2b => all_total_2_body_energies,
+        :total_3b => all_total_3_body_energies,
+    )
+
+    return df
+
+end
+
 function process_EDA_mbe_ion_water_calculation(full_output_file::String, two_body_output_file::String, three_body_output_file::String)
 
     E_h2o = -76.440791829812

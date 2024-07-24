@@ -2,7 +2,7 @@ include("sample_configurations.jl")
 include("qchem_input_generator.jl")
 include("gdma_and_orient.jl")
 include("scans.jl")
-using Graphs
+using Graphs, Random
 
 function generate_all_inputs_main(
     infile_name::String,
@@ -537,6 +537,411 @@ function generate_ion_water_cluster_optimization_inputs(file_prefix::String, geo
             geoms[unique_geom_indices[i]], labels[unique_geom_indices[i]], wb97xv_tzvppd_opt(),
             charge, 1
         )
+    end
+end
+
+"""
+Samples nmers of a particular size and composition and generates EDA input files.
+Many input files will be made depending on how many nmers are sampled and the
+batch size given as an option. Default number of EDA calculations per input file is 100.
+"""
+function sample_nmers_and_write_eda_input_files(
+    output_file_prefix::String, xyz_file::String,
+    num_fragments_in_nmer::Int, desired_fragment_labels::Vector{String},
+    charge::Int, multiplicity::Int, fragment_indices::Vector{Vector{Int}},
+    always_take_n_most_compact::Int=2, randomly_select_n_remaining::Int=3,
+    num_nmers_per_input_file::Int=2, num_geometries_used::Int=20
+)
+    _, labels, geoms = read_xyz(xyz_file)
+    geom_indices = randperm(length(geoms))
+    if length(geom_indices) > num_geometries_used
+        geom_indices = geom_indices[1:20]
+    end
+    rand_geoms = geoms[geom_indices]
+    rand_labels = labels[geom_indices]
+    all_nmer_labels = Vector{String}[]
+    all_nmer_geoms = Matrix{Float64}[]
+    for i in eachindex(rand_geoms)
+        nmer_labels, nmer_geoms = sample_nmers_from_cluster_by_formula(rand_geoms[i], rand_labels[i], num_fragments_in_nmer, desired_fragment_labels)
+        if length(nmer_labels) > always_take_n_most_compact
+            append!(all_nmer_labels, nmer_labels[1:always_take_n_most_compact])
+            append!(all_nmer_geoms, nmer_geoms[1:always_take_n_most_compact])
+        else
+            append!(all_nmer_labels, nmer_labels)
+            append!(all_nmer_geoms, nmer_geoms)
+        end
+        if (length(nmer_labels) - always_take_n_most_compact) >= randomly_select_n_remaining
+            indices = [(always_take_n_most_compact+1):length(nmer_labels)...]
+            if length(indices) < randomly_select_n_remaining
+                append!(all_nmer_labels, nmer_labels[indices])
+                append!(all_nmer_geoms, nmer_geoms[indices])
+            else
+                selected_indices = indices[randperm(length(indices))[1:randomly_select_n_remaining]]
+                append!(all_nmer_labels, nmer_labels[selected_indices])
+                append!(all_nmer_geoms, nmer_geoms[selected_indices])
+            end
+        end
+    end
+    if length(all_nmer_geoms) == 0
+        @assert false "Failed to find any matching nmers!"
+    end
+    num_files = ((length(all_nmer_geoms)-1) ÷ num_nmers_per_input_file) + 1
+    for i_file in 1:num_files
+        last_batch_index = i_file*num_nmers_per_input_file < length(all_nmer_geoms) ? i_file*num_nmers_per_input_file : length(all_nmer_geoms)
+        fragment_charges = [get_total_charge(all_nmer_labels[1][fragment_indices[i]]) for i in eachindex(fragment_indices)]
+        fragment_multiplicities = ones(Int, num_fragments_in_nmer)
+        write_multi_input_file_fragments(
+            string(output_file_prefix, "_", i_file, ".in"),
+            all_nmer_geoms[((i_file-1)*num_nmers_per_input_file+1):last_batch_index],
+            all_nmer_labels[((i_file-1)*num_nmers_per_input_file+1):last_batch_index],
+            eda_input(), charge, multiplicity,
+            fragment_indices, fragment_charges, fragment_multiplicities
+        )
+    end
+end
+
+function write_two_anion_one_cation_scans()
+    anion_labels=["F", "Cl", "Br", "I"]
+    cation_labels=["Li", "Na", "K", "Rb", "Cs"]
+
+    ion_dimer_equilibrium_distances = Dict(
+        "LiF" => 1.5740842692,
+        "NaF" => 1.9395644696,
+        "KF" => 2.191804663,
+        "RbF" => 2.3418174634,
+        "CsF" => 2.3791859333999996,
+        "LiCl" => 2.0273134221999998,
+        "NaCl" => 2.3681930533999997,
+        "KCl" => 2.6883189056,
+        "RbCl" => 2.848191689,
+        "CsCl" => 2.9408768782,
+        "LiBr" => 2.1804909851999996,
+        "NaBr" => 2.5125576179999998,
+        "KBr" => 2.8474846406000003,
+        "RbBr" => 3.0101616448,
+        "CsBr" => 3.1139594843999996,
+        "LiI" => 2.3928627104,
+        "NaI" => 2.7130080771999996,
+        "KI" => 3.0659928548,
+        "RbI" => 3.2302740466,
+        "CsI" => 3.3471488736,
+    )
+
+    for i_anion in eachindex(anion_labels)
+        for i_cation in eachindex(cation_labels)
+            geom = zeros(3, 3)
+            geom[1] = ion_dimer_equilibrium_distances[string(cation_labels[i_cation], anion_labels[i_anion])]
+            geom[9] = ion_dimer_equilibrium_distances[string(cation_labels[i_cation], anion_labels[i_anion])]
+            labels = [anion_labels[i_anion], cation_labels[i_cation], anion_labels[i_anion]]
+            scan_geoms = distance_scan(geom, (3, 2), -0.7, 6.0, 67, only_move_atom_1=true)
+            mkpath(string(lowercase(anion_labels[i_anion]), "2_", lowercase(cation_labels[i_cation])))
+            cd(string(lowercase(anion_labels[i_anion]), "2_", lowercase(cation_labels[i_cation])))
+            write_xyz(
+                string(lowercase(anion_labels[i_anion]), "2_", lowercase(cation_labels[i_cation]), "_mbe_eda_scan_geoms.xyz"),
+                [labels for i in eachindex(scan_geoms)], scan_geoms
+            )
+            for i in eachindex(scan_geoms)
+                write_mbe_inputs(
+                    string(lowercase(anion_labels[i_anion]), "2_", lowercase(cation_labels[i_cation]), "_wb97xv_qzvppd_mbe_eda_scan_", i, ".in"),
+                    scan_geoms[i],
+                    labels, eda_input(), [[1], [2], [3]], 2
+                )
+            end
+            cd("..")
+        end
+    end
+end
+
+function write_two_cation_one_anion_scans()
+    anion_labels=["F", "Cl", "Br", "I"]
+    cation_labels=["Li", "Na", "K", "Rb", "Cs"]
+
+    ion_dimer_equilibrium_distances = Dict(
+        "LiF" => 1.5740842692,
+        "NaF" => 1.9395644696,
+        "KF" => 2.191804663,
+        "RbF" => 2.3418174634,
+        "CsF" => 2.3791859333999996,
+        "LiCl" => 2.0273134221999998,
+        "NaCl" => 2.3681930533999997,
+        "KCl" => 2.6883189056,
+        "RbCl" => 2.848191689,
+        "CsCl" => 2.9408768782,
+        "LiBr" => 2.1804909851999996,
+        "NaBr" => 2.5125576179999998,
+        "KBr" => 2.8474846406000003,
+        "RbBr" => 3.0101616448,
+        "CsBr" => 3.1139594843999996,
+        "LiI" => 2.3928627104,
+        "NaI" => 2.7130080771999996,
+        "KI" => 3.0659928548,
+        "RbI" => 3.2302740466,
+        "CsI" => 3.3471488736,
+    )
+
+    for i_anion in eachindex(anion_labels)
+        for i_cation in eachindex(cation_labels)
+            geom = zeros(3, 3)
+            geom[1] = ion_dimer_equilibrium_distances[string(cation_labels[i_cation], anion_labels[i_anion])]
+            geom[9] = ion_dimer_equilibrium_distances[string(cation_labels[i_cation], anion_labels[i_anion])]
+            labels = [cation_labels[i_cation], anion_labels[i_anion], cation_labels[i_cation]]
+            scan_geoms = distance_scan(geom, (3, 2), -0.7, 6.0, 67, only_move_atom_1=true)
+            mkpath(string(lowercase(cation_labels[i_cation]), "2_", lowercase(anion_labels[i_anion])))
+            cd(string(lowercase(cation_labels[i_cation]), "2_", lowercase(anion_labels[i_anion])))
+            write_xyz(
+                string(lowercase(cation_labels[i_cation]), "2_", lowercase(anion_labels[i_anion]), "_mbe_eda_scan_geoms.xyz"),
+                [labels for i in eachindex(scan_geoms)], scan_geoms
+            )
+            for i in eachindex(scan_geoms)
+                write_mbe_inputs(
+                    string(lowercase(cation_labels[i_cation]), "2_", lowercase(anion_labels[i_anion]), "_wb97xv_qzvppd_mbe_eda_scan_", i, ".in"),
+                    scan_geoms[i],
+                    labels, eda_input(), [[1], [2], [3]], 2
+                )
+            end
+            cd("..")
+        end
+    end
+end
+
+function write_water_two_cation_scans()
+    cation_labels=["Li", "Na", "K", "Rb", "Cs"]
+
+    ion_water_dimer_equilibrium_distances = Dict(
+        "Li" => 1.8605727840215947,
+        "Na" => 2.2478974336840563,
+        "K" => 2.6463373359340663,
+        "Rb" => 2.8333436608985725,
+        "Cs" => 3.006992354480198,
+    )
+
+    for i_cation in eachindex(cation_labels)
+        geom = zeros(3, 5)
+        @views geom[:, 1] = [0.0, 0.11674231,  0.0]
+        @views geom[:, 2] = [-0.76124067, -0.46696949,  0.0]
+        @views geom[:, 3] = [ 0.76124067, -0.46696949,  0.0]
+        θ = 52.25 * π / 180.0
+        R_eq = ion_water_dimer_equilibrium_distances[cation_labels[i_cation]]
+        @views geom[:, 4] = [ R_eq * sin(θ), 0.11674231 + R_eq * cos(θ),  0.0]
+        @views geom[:, 5] = [-R_eq * sin(θ), 0.11674231 + R_eq * cos(θ),  0.0]
+        labels = ["O", "H", "H", cation_labels[i_cation], cation_labels[i_cation]]
+
+        mkpath(string("w1_", lowercase(cation_labels[i_cation]), "2"))
+        cd(string("w1_", lowercase(cation_labels[i_cation]), "2"))
+        O_ion_distances = [(R_eq-0.7):0.1:(R_eq+6.0)...]
+        O_ion_1_vec = normalize(geom[:, 4] - geom[:, 1])
+        O_ion_2_vec = normalize(geom[:, 5] - geom[:, 1])
+        ion_1_positions = [geom[:, 1] + O_ion_distances[i] * O_ion_1_vec for i in eachindex(O_ion_distances)]
+        ion_2_positions = [geom[:, 1] + O_ion_distances[i] * O_ion_2_vec for i in eachindex(O_ion_distances)]
+        scan_geoms = [copy(geom) for _ in eachindex(O_ion_distances)]
+        for i in eachindex(scan_geoms)
+            @views scan_geoms[i][:, 4] = ion_1_positions[i]
+            @views scan_geoms[i][:, 5] = ion_2_positions[i]
+        end
+        write_xyz(
+            string(string("w1_", lowercase(cation_labels[i_cation]), "2_mbe_eda_scan_geoms.xyz")),
+            [labels for i in eachindex(scan_geoms)], scan_geoms
+        )
+        for i in eachindex(scan_geoms)
+            write_mbe_inputs(
+                string("w1_", lowercase(cation_labels[i_cation]), "_wb97xv_qzvppd_mbe_eda_scan_", i, ".in"),
+                scan_geoms[i],
+                labels, eda_input(), [[1,2,3], [4], [5]], 2
+            )
+        end
+        cd("..")
+    end
+end
+
+function write_water_two_anion_scans()
+    anion_labels=["F", "Cl", "Br", "I"]
+
+    ion_water_dimer_equilibrium_distances = Dict(
+        "F" => 2.4698184455120584,
+        "Cl" => 3.1429790118854157,
+        "Br" => 3.340785263204781,
+        "I" => 3.596534030535338,
+    )
+
+    for i_anion in eachindex(anion_labels)
+        geom = zeros(3, 5)
+        @views geom[:, 1] = [0.0, 0.11674231,  0.0]
+        @views geom[:, 2] = [-0.76124067, -0.46696949,  0.0]
+        @views geom[:, 3] = [ 0.76124067, -0.46696949,  0.0]
+        θ = 52.25 * π / 180.0
+        R_eq = ion_water_dimer_equilibrium_distances[anion_labels[i_anion]]
+        @views geom[:, 4] = [ R_eq * sin(θ), -(R_eq * cos(θ) - 0.11674231),  0.0]
+        @views geom[:, 5] = [-R_eq * sin(θ), -(R_eq * cos(θ) - 0.11674231),  0.0]
+        labels = ["O", "H", "H", anion_labels[i_anion], anion_labels[i_anion]]
+
+        mkpath(string("w1_", lowercase(anion_labels[i_anion]), "2"))
+        cd(string("w1_", lowercase(anion_labels[i_anion]), "2"))
+        O_ion_distances = [(R_eq-0.7):0.1:(R_eq+6.0)...]
+        O_ion_1_vec = normalize(geom[:, 4] - geom[:, 1])
+        O_ion_2_vec = normalize(geom[:, 5] - geom[:, 1])
+        ion_1_positions = [geom[:, 1] + O_ion_distances[i] * O_ion_1_vec for i in eachindex(O_ion_distances)]
+        ion_2_positions = [geom[:, 1] + O_ion_distances[i] * O_ion_2_vec for i in eachindex(O_ion_distances)]
+        scan_geoms = [copy(geom) for _ in eachindex(O_ion_distances)]
+        for i in eachindex(scan_geoms)
+            @views scan_geoms[i][:, 4] = ion_1_positions[i]
+            @views scan_geoms[i][:, 5] = ion_2_positions[i]
+        end
+        write_xyz(
+            string(string("w1_", lowercase(anion_labels[i_anion]), "2_mbe_eda_scan_geoms.xyz")),
+            [labels for i in eachindex(scan_geoms)], scan_geoms
+        )
+        for i in eachindex(scan_geoms)
+            write_mbe_inputs(
+                string("w1_", lowercase(anion_labels[i_anion]), "_wb97xv_qzvppd_mbe_eda_scan_", i, ".in"),
+                scan_geoms[i],
+                labels, eda_input(), [[1,2,3], [4], [5]], 2
+            )
+        end
+        cd("..")
+    end
+end
+
+function write_two_water_cation_scans()
+    cation_labels=["Li", "Na", "K", "Rb", "Cs"]
+
+    ion_w2_geoms = Dict(
+        "Li" => reduce(hcat, 
+            [[1.0086122651,    -2.3304560468,    -0.6411195767],
+            [0.2833749318,    -2.4439345995,    -1.2645543490],
+            [1.3311380979,    -3.2178221941,    -0.4513522752],
+            [2.2836905487,     0.9025323664,     0.7196429755],
+            [3.0864387321,     1.3712590588,     0.4681466405],
+            [1.8686491843,     1.4413698461,     1.4013008997],
+            [1.6631197179,    -0.7234972398,     0.0441441063]]
+        ),
+        "Na" => reduce(hcat, 
+            [[0.8761399806,    -2.6538877812,    -0.7954545182],
+            [0.1328809182,    -2.7764971875,    -1.3938432440],
+            [1.2132622896,    -3.5399437753,    -0.6318846411],
+            [2.4178808133,     1.2250842058,     0.8734640167],
+            [3.2354362500,     1.6798238980,     0.6490683233],
+            [1.9958573697,     1.7829873638,     1.5339585443],
+            [1.6535658564,    -0.7181155326,     0.0408999401]]
+        ),
+        "K" => reduce(hcat, 
+            [[0.8418321960,    -2.7697259965,    -0.8671209369],
+            [0.2692075317,    -3.2830826000,    -1.4448755080],
+            [1.5043661346,    -3.3975359195,    -0.5639041587],
+            [2.4809799970,     1.3223039645,     0.9537398503],
+            [3.4199515682,     1.3812022809,     0.7540431371],
+            [2.3478618203,     1.9435163827,     1.6758708740],
+            [0.6608242300,    -0.1972269212,    -0.2315448365]]
+        ),
+        "Rb" => reduce(hcat, 
+            [[0.8021749789,    -2.9019296423,    -0.9120030164],
+            [0.3292677748,    -3.3955504511,    -1.5883722600],
+            [1.3740132038,    -3.5529261793,    -0.4949404971],
+            [2.5457379538,     1.4428068821,     1.0056380062],
+            [3.4475427955,     1.6013413268,     0.7117493872],
+            [2.4639907118,     1.9535152240,     1.8163710596],
+            [0.5622960591,    -0.1478059693,    -0.2622342584]]
+        ),
+        "Cs" => reduce(hcat, 
+            [[0.8361879475,    -2.8727067367,    -0.8907335493],
+            [0.4488805673,    -3.4506121372,    -1.5546185096],
+            [1.4558906036,    -3.4335755195,    -0.4153097435],
+            [2.5515292226,     1.3905549775,     0.9959254479],
+            [3.4592625910,     1.4549660282,     0.6852190611],
+            [2.5462566688,     1.8767008181,     1.8256097414],
+            [0.2270158769,     0.0341237606,    -0.3698840267]]
+        )
+    )
+
+    for i_cation in eachindex(cation_labels)
+        geom = ion_w2_geoms[cation_labels[i_cation]]
+        labels = ["O", "H", "H", "O", "H", "H", cation_labels[i_cation]]
+
+        mkpath(string("w2_", lowercase(cation_labels[i_cation])))
+        cd(string("w2_", lowercase(cation_labels[i_cation])))
+        scan_geoms_1 = distance_scan(geom, ((1, 7), ([3, 2], Int[])), -0.7, 6.0, 68, true)
+        scan_geoms_2 = distance_scan(geom, ((4, 7), ([6, 5], Int[])), -0.7, 6.0, 68, true)
+        scan_geoms = [copy(geom) for _ in eachindex(scan_geoms_1)]
+        for i in eachindex(scan_geoms)
+            @views scan_geoms[i][:, 1:3] = scan_geoms_1[i][:, 1:3]
+            @views scan_geoms[i][:, 4:6] = scan_geoms_2[i][:, 4:6]
+        end
+        write_xyz(
+            string(string("w2_", lowercase(cation_labels[i_cation]), "_mbe_eda_scan_geoms.xyz")),
+            [labels for i in eachindex(scan_geoms)], scan_geoms
+        )
+        for i in eachindex(scan_geoms)
+            write_mbe_inputs(
+                string("w2_", lowercase(cation_labels[i_cation]), "_wb97xv_qzvppd_mbe_eda_scan_", i, ".in"),
+                scan_geoms[i],
+                labels, eda_input(), [[1,2,3], [4, 5, 6], [7]], 2
+            )
+        end
+        cd("..")
+    end
+end
+
+function write_two_water_anion_scans()
+    anion_labels=["F", "Cl", "Br", "I"]
+
+    ion_w2_geoms = Dict(
+        "F" => reduce(hcat, 
+            [[ 1.6824375292,    -1.7459878131,    -0.6328222236],
+            [ 1.5162032341,    -2.5765979062,    -0.1862421495],
+            [ 1.1741033556,    -1.0785875993,    -0.0577732691],
+            [-1.9173351853,    -1.1533975619,     0.1591721904],
+            [-1.0551231640,    -0.7377854573,     0.4855534329],
+            [-1.6420578148,    -1.5606133938,    -0.6634069398],
+            [ 0.3375010451,    -0.2037652682,     0.8361069588]]
+        ),
+        "Cl" => reduce(hcat, 
+            [[ 1.6869670072,    -1.8531641384,    -0.1198581996],
+            [ 0.8102829717,    -2.2309983142,    -0.2601151959],
+            [ 1.4614727287,    -0.9103831098,    -0.0317187892],
+            [-1.3251718618,    -1.9272350901,    -0.1936114239],
+            [-1.0094298398,    -0.9936364518,    -0.2540530639],
+            [-1.4697515597,    -2.0263648271,     0.7494118297],
+            [-0.0586404462,     0.8850469314,     0.0505328427]]
+        ),
+        "Br" => reduce(hcat, 
+            [[ 1.6991952875,    -1.8993399422,    -0.1274513446],
+            [ 0.8056381531,    -2.2448246646,    -0.2440321618],
+            [ 1.5190135881,    -0.9501116683,    -0.0360146043],
+            [-1.3194918069,    -1.9611918705,    -0.1942496295],
+            [-1.0584412739,    -1.0177736371,    -0.2807419311],
+            [-1.4615528975,    -2.0407424524,     0.7513402293],
+            [-0.0886320504,     1.0572492351,     0.0717374421]]
+        ),
+        "I" => reduce(hcat, 
+            [[ 1.6986473327,    -1.9639029435,    -0.1312274604],
+            [ 0.7823115723,    -2.2536683162,    -0.2279229839],
+            [ 1.5893933601,    -1.0070597582,    -0.0363129265],
+            [-1.3037920656,    -2.0122930500,    -0.1914678937],
+            [-1.1100999228,    -1.0650960944,    -0.3370086932],
+            [-1.4197728402,    -2.0447934301,     0.7610489098],
+            [-0.1409584365,     1.2900785924,     0.1034790478]]
+        )
+    )
+
+    for i_anion in eachindex(anion_labels)
+        geom = ion_w2_geoms[anion_labels[i_anion]]
+        labels = ["O", "H", "H", "O", "H", "H", anion_labels[i_anion]]
+
+        mkpath(string("w2_", lowercase(anion_labels[i_anion])))
+        cd(string("w2_", lowercase(anion_labels[i_anion])))
+        com_vec = reduce(vcat, center_of_mass(geom, labels))
+        scan_geoms = distance_scan_from_point(geom, 7, com_vec, -0.7, 6.0, 68)
+        write_xyz(
+            string(string("w2_", lowercase(anion_labels[i_anion]), "_mbe_eda_scan_geoms.xyz")),
+            [labels for i in eachindex(scan_geoms)], scan_geoms
+        )
+        for i in eachindex(scan_geoms)
+            write_mbe_inputs(
+                string("w2_", lowercase(anion_labels[i_anion]), "_wb97xv_qzvppd_mbe_eda_scan_", i, ".in"),
+                scan_geoms[i],
+                labels, eda_input(), [[1,2,3], [4, 5, 6], [7]], 2
+            )
+        end
+        cd("..")
     end
 end
 

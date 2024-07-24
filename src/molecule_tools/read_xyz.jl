@@ -1,6 +1,6 @@
 using StaticArrays
 
-function read_xyz(ifile::String; T::Type=Float64, static::Bool=false, start_at_N::Int=1, load_N_frames::Int=typemax(Int))
+function read_xyz(ifile::String; T::Type=Float64, static::Bool=false, to_svector::Bool=false, start_at_N::Int=1, load_N_frames::Int=typemax(Int))
     """
     Reads in an xyz file of possibly multiple geometries, returning the header, atom labels, 
     and coordinates as arrays of strings and Float64s for the coordinates.
@@ -76,6 +76,16 @@ function read_xyz(ifile::String; T::Type=Float64, static::Bool=false, start_at_N
             #    println(string("Finished reading ", length(header), " structures."))
             #end
         end
+    end
+    if to_svector
+        new_geoms = Vector{Vector{SVector{3, Float64}}}()
+        if !static
+            @assert false "Updated the code to handle the case you want back SVectors but only get a matrix or request this be static in the first place."
+        end
+        for i in eachindex(geoms)
+            push!(new_geoms, [SVector{3, Float64}(geoms[i][j]) for j in eachindex(geoms[i])])
+        end
+        return header, atom_labels, new_geoms
     end
 
     return header, atom_labels, geoms
