@@ -363,6 +363,7 @@ function eda_input()
   SCF_CONVERGENCE 7
   SCF_PRINT_FRGM TRUE
   EDA_COVP TRUE
+  SCF_ALGORITHM DIIS_GDM
 \$end\n"
 end
 

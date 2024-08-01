@@ -935,7 +935,7 @@ function process_EDA_mbe_calculation(full_output_file::String, mbe_output_files:
             :int => Float64[],
             :deform => Float64[]
         )
-        parse_EDA_terms!(mbe_eda_data, mbe_file, true, 0.0)
+        parse_EDA_terms!(mbe_eda_data, mbe_file, false, 0.0)
         for key in keys(mbe_eda_data)
             if key != :int
                 term_total = sum(mbe_eda_data[key])
@@ -951,7 +951,7 @@ function process_EDA_mbe_calculation(full_output_file::String, mbe_output_files:
         )
         push!(total_eda_data[:int], total_interaction)
     end
-    parse_EDA_terms!(total_eda_data, full_output_file, true, 0.0)
+    parse_EDA_terms!(total_eda_data, full_output_file, false, 0.0)
     for key in keys(total_eda_data)
         if length(total_eda_data[key]) > 0 && key != :int
             total_eda_data[key][end] /= 4.184
