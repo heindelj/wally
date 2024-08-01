@@ -131,7 +131,11 @@ function parse_EDA_terms!(eda_dict::Dict{Symbol, Vector{Float64}}, output_file::
                     index += 1
                     num_fragments += 1
                 end
-                push!(eda_dict[:deform], (fragment_sum - num_fragments * fragment_zero) * 627.51 * 4.184)
+                if fragment_zero == 0.0
+                    push!(eda_dict[:deform], fragment_sum)
+                else
+                    push!(eda_dict[:deform], (fragment_sum - num_fragments * fragment_zero) * 627.51 * 4.184)
+                end
             end
         end
     end
@@ -916,7 +920,7 @@ function process_EDA_mbe_calculation(full_output_file::String, mbe_output_files:
         :ct => Float64[],
         :int => Float64[],
         :deform => Float64[],
-        :total => Float64[]
+        #:total => Float64[]
     )
 
     for mbe_file in mbe_output_files
@@ -931,7 +935,7 @@ function process_EDA_mbe_calculation(full_output_file::String, mbe_output_files:
             :int => Float64[],
             :deform => Float64[]
         )
-        parse_EDA_terms!(mbe_eda_data, mbe_file, true, E_h2o)
+        parse_EDA_terms!(mbe_eda_data, mbe_file, true, 0.0)
         for key in keys(mbe_eda_data)
             if key != :int
                 term_total = sum(mbe_eda_data[key])
@@ -947,7 +951,7 @@ function process_EDA_mbe_calculation(full_output_file::String, mbe_output_files:
         )
         push!(total_eda_data[:int], total_interaction)
     end
-    parse_EDA_terms!(total_eda_data, full_output_file, true, E_h2o)
+    parse_EDA_terms!(total_eda_data, full_output_file, true, 0.0)
     for key in keys(total_eda_data)
         if length(total_eda_data[key]) > 0 && key != :int
             total_eda_data[key][end] /= 4.184
@@ -961,14 +965,14 @@ function process_EDA_mbe_calculation(full_output_file::String, mbe_output_files:
         total_eda_data[:ct][end]
     )   
     push!(total_eda_data[:int], total_interaction)
-    for i in eachindex(total_eda_data[:int])
-        if i < length(total_eda_data[:int])
-            total_eda_data[:deform][i] = total_eda_data[:deform][end]
-        end
-        push!(total_eda_data[:total], total_eda_data[:int][i] + total_eda_data[:deform][end])
-        # ^^ Always add the end of deformation since the MBE one gets summed too many times
-        # and the deformation at an MBE level and full level are always the same.
-    end
+    #for i in eachindex(total_eda_data[:int])
+    #    if i < length(total_eda_data[:int])
+    #        total_eda_data[:deform][i] = total_eda_data[:deform][end]
+    #    end
+    #    push!(total_eda_data[:total], total_eda_data[:int][i] + total_eda_data[:deform][end])
+    #    # ^^ Always add the end of deformation since the MBE one gets summed too many times
+    #    # and the deformation at an MBE level and full level are always the same.
+    #end
 
     # append total many-body contribution to each term
     for key in keys(total_eda_data)
@@ -987,6 +991,29 @@ function process_EDA_mbe_calculation(full_output_file::String, mbe_output_files:
 
     labels, coords = parse_xyz_and_eda_from_output!(full_output_file, eda_data)
     return labels[1], [MVector{3, Float64}(coords[1][:, i]) for i in eachindex(eachcol(coords[1]))], total_eda_data
+end
+
+"""
+file_prefix is whatever name comes before an integer. The suffix is assumed to be
+full_system for the full systems and 2_body for the dimer calculations.
+"""
+function parse_two_body_many_body_eda_scan_and_write_geoms_and_data(output_file_prefix::String, num_scan_steps::Int)
+
+    all_labels = Vector{String}[]
+    all_geoms = Matrix{Float64}[]
+    all_eda_data = Dict{Symbol, Vector{Float64}}[]
+    for i in 1:num_scan_steps
+        full_system_file = string(output_file_prefix, "_", i, "_full_system.out")
+        two_body_file = string(output_file_prefix, "_", i, "_2_body.out")
+        labels, geoms, eda_data = process_EDA_mbe_calculation(full_system_file, two_body_file)
+        push!(all_labels, labels)
+        push!(all_geoms, reduce(hcat, geoms))
+        push!(all_eda_data, eda_data)
+    end
+
+    eda_data_as_df = convert_parsed_eda_data_to_linear_format(all_eda_data)
+    write_xyz(string(output_file_prefix, "_geoms.xyz"), all_labels, all_geoms)
+    CSV.write(string(output_file_prefix, ".csv"), eda_data_as_df)
 end
 
 function convert_parsed_eda_data_to_linear_format(eda_data::Vector{Dict{Symbol, Vector{Float64}}})
@@ -1027,9 +1054,9 @@ function convert_parsed_eda_data_to_linear_format(eda_data::Vector{Dict{Symbol, 
         all_int_energies[i] = eda_data[i][:int][2]
         all_int_2_body_energies[i] = eda_data[i][:int][1]
         all_int_3_body_energies[i] = eda_data[i][:int][3]
-        all_total_energies[i] = eda_data[i][:total][2]
-        all_total_2_body_energies[i] = eda_data[i][:total][1]
-        all_total_3_body_energies[i] = eda_data[i][:total][3]
+        #all_total_energies[i] = eda_data[i][:total][2]
+        #all_total_2_body_energies[i] = eda_data[i][:total][1]
+        #all_total_3_body_energies[i] = eda_data[i][:total][3]
     end
 
     df = DataFrame(
@@ -1049,9 +1076,9 @@ function convert_parsed_eda_data_to_linear_format(eda_data::Vector{Dict{Symbol, 
         :int => all_int_energies,
         :int_2b => all_int_2_body_energies,
         :int_3b => all_int_3_body_energies,
-        :total => all_total_energies,
-        :total_2b => all_total_2_body_energies,
-        :total_3b => all_total_3_body_energies,
+        #:total => all_total_energies,
+        #:total_2b => all_total_2_body_energies,
+        #:total_3b => all_total_3_body_energies,
     )
 
     return df
@@ -1119,7 +1146,7 @@ function process_EDA_mbe_ion_water_calculation(full_output_file::String, two_bod
     
     # Make tuples of ion-water-water and water-water-water terms #
     # NOTE: It is easy to work out that the number of times each ion-water dimer
-    # appears in the set of i-w-w triples if the number of waters minus one (for one ion).
+    # appears in the set of i-w-w triples is the number of waters minus one (for one ion).
     # Similarly, the number of times each water dimer appears is always one.
     # So, we take the sum of all ion-water trimer energies for each component and subtract
     # off the total 2-body water-water contribution and num_waters-1 times the ion-water
