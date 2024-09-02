@@ -429,6 +429,53 @@ RESPONSE_POLAR -1
 \$end"
 end
 
+function dielectric_polarizability_input(ϵ::Float64=78.4)
+    return "\$rem
+    JOBTYPE       polarizability
+    method        wB97X-V
+    BASIS         def2-qzvppd
+    XC_GRID       000099000590
+    NL_GRID       1
+    UNRESTRICTED     false
+    GEN_SCFMAN       TRUE
+    MAX_SCF_CYCLES      200
+    SYMMETRY      FALSE
+    SYM_IGNORE    TRUE
+    MEM_TOTAL     16000
+    BASIS_LIN_DEP_THRESH     10
+    THRESH        14
+    SCF_CONVERGENCE          8
+    RESPONSE_POLAR -1
+    SOLVENT_METHOD  PCM
+    \$end
+    
+    \$solvent
+    Dielectric $ϵ
+    \$end"
+    end
+
+function frozen_polarizability_input()
+    return "\$rem
+    JOBTYPE       polarizability
+    method        wB97X-V
+    BASIS         def2-qzvppd
+    XC_GRID       000099000590
+    NL_GRID       1
+    UNRESTRICTED     false
+    GEN_SCFMAN       TRUE
+    MAX_SCF_CYCLES      200
+    SYMMETRY      FALSE
+    SYM_IGNORE    TRUE
+    MEM_TOTAL     16000
+    BASIS_LIN_DEP_THRESH     10
+    THRESH        14
+    SCF_CONVERGENCE          8
+    FRZ_ORTHO_DECOMP 1
+    FRGM_METHOD stoll
+    RESPONSE_POLAR -1
+    \$end"
+end
+
 function bonded_eda_input()
     return "
 \$rem
