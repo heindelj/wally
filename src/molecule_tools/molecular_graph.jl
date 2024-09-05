@@ -32,7 +32,7 @@ the cluster and then group everything into fragments of water, OH-, H3O+, and
 monoatomic ions. We will then use various h-bond definitions to construct the
 connectivity of the graph.
 """
-function build_noncovalent_molecular_graph(coords::Matrix{Float64}, labels::Vector{String})
+function build_noncovalent_molecular_graph(coords::Matrix{Float64}, labels::Vector{String}, use_distance_angle_definition::Bool=false)
     sorted_labels, sorted_coords = sort_water_cluster(coords, labels)
     
     cluster = build_cluster(sorted_coords, sorted_labels)
@@ -59,7 +59,11 @@ function build_noncovalent_molecular_graph(coords::Matrix{Float64}, labels::Vect
 
     water_coords = sorted_coords[:, water_indices]
 
-    hbonds = r_psi_hydrogen_bonds(water_coords)
+    if !use_distance_angle_definition
+        hbonds = r_psi_hydrogen_bonds(water_coords)
+    else
+        hbonds = distance_angle_hydrogen_bonds(water_coords)
+    end
 
     adj_matrix = zeros(Int, length(water_labels) ÷ 3, length(water_labels) ÷ 3)
     for key in keys(hbonds)

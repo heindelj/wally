@@ -64,6 +64,35 @@ function r_psi_hydrogen_bonds(coords::AbstractMatrix)
     return hbonds
 end
 
+function distance_angle_hydrogen_bonds(coords::AbstractMatrix)
+    """
+    Computes the distance angle hydrogen bond of a collection of water molecules, 
+    returning which of the atoms is donating a hydrogen bond to the other ones.
+
+    Args:
+        coords: 3xN matrix of coordinates in OHH order
+    Returns:
+        hbonds: dictionary mapping the index of the atoms which donate a hydrogen bond to index of the atom they donate to
+    """
+    O_indices  = range(1, size(coords, 2), step=3)
+    H_indices = sort!([range(2, size(coords, 2), step=3); range(3, size(coords, 2), step=3)])
+    hbonds = Dict{Int, Int}()
+    for oxygen_acc_index in O_indices
+        for oxygen_donor_index in O_indices
+            for hydrogen_index in H_indices
+                if (oxygen_donor_index + 1 == hydrogen_index || oxygen_donor_index + 2 == hydrogen_index)
+                    if (oxygen_donor_index != oxygen_acc_index)
+                        if is_a_distance_angle_hydrogen_bond(oxygen_donor_index, hydrogen_index, oxygen_acc_index, coords)
+                            hbonds[hydrogen_index] = oxygen_acc_index
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return hbonds
+end
+
 function is_a_hydrogen_bond(hydrogen_index::Int, oxygen_index::Int, coords::AbstractMatrix)
     """
     Tests if the hydrogen at hydrogen_index is hbonded to oxygen_index. If so, returns true.

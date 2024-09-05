@@ -190,3 +190,61 @@ function write_xyz(outfile::AbstractString, labels::AbstractVector{Vector{String
     end
     write_xyz(outfile, [string(length(labels[i]) - num_atoms_to_skip, "\n") for i in eachindex(labels)], labels, geoms, append=append, skip_atom_labels=skip_atom_labels, directory=directory)
 end
+
+"""
+Writes an xyz file with the elements returned by read_xyz. Also takes the connectivity of the atoms
+which is included in the xyz file. Some programs such as AMOEBA can use this format directly.
+Currently this assumes an ion water system! Any time we see an oxygen, we assume it is for water
+and get the connectivity from OHH ordering. If we see an ion, we just give it no connectivity.
+"""
+function write_xyz_with_connectivity_and_atom_types(outfile::AbstractString, header::AbstractArray, labels::AbstractArray, geoms::AbstractArray)
+
+    amoeba_atom_types = Dict(
+        "O" => 349,
+        "H" => 350,
+        "Li" => 351,
+        "Na" => 352,
+        "K" => 353,
+        "Rb" => 354,
+        "Cs" => 355,
+        "F" => 362,
+        "Cl" => 363,
+        "Br" => 364,
+        "I" => 365
+    )
+
+    connectivities = [Int[] for _ in eachindex(labels[1])]
+    for i in eachindex(labels[1])
+        if labels[1][i] == "O"
+            connectivities[i] = [i+1, i+2]
+        elseif labels[1][i] == "H"
+            if labels[1][i-1] == "O"
+                connectivities[i] = [i-1]
+            else
+                connectivities[i] = [i-2]
+            end
+        else
+            # Do nothing for ions
+        end
+    end
+    display(connectivities)
+
+    mode = "w"
+    if length(header) != length(geoms)
+        header = [header[1] for i in 1:length(geoms)]
+    end
+    if length(labels) != length(geoms)
+        labels = [labels[1] for i in 1:length(geoms)]
+    end
+    open(outfile, mode) do io
+        for (i_geom, head) in enumerate(header)
+            write(io, string(head))
+            for (i_coord, atom_label) in enumerate(labels[i_geom])
+                write(io, string(i_coord, " ", atom_label, " ",
+                    join(string.(geoms[i_geom][:,i_coord]), " "), " ", amoeba_atom_types[titlecase(atom_label)], " ",
+                    join(string.(connectivities[i_coord]), " "), "\n")
+                )
+            end
+        end
+    end
+end
