@@ -227,7 +227,6 @@ function write_xyz_with_connectivity_and_atom_types(outfile::AbstractString, hea
             # Do nothing for ions
         end
     end
-    display(connectivities)
 
     mode = "w"
     if length(header) != length(geoms)

@@ -776,6 +776,47 @@ function parse_multiple_xyz_and_fda_data(infile::String)
     return final_labels, final_coords, force_dict
 end
 
+function parse_polarizabilities_and_energies_from_outfile(file::String)
+    lines = readlines(file)
+
+    all_energies = Float64[]
+    actual_energies = Float64[]
+    polarizabilities = Matrix{Float64}[]
+    for i in eachindex(lines)
+        if occursin("Polarizability tensor      [a.u.]", lines[i])
+            α = zeros(3, 3)
+            row_1 = parse.((Float64,), split(lines[i+1]))
+            row_2 = parse.((Float64,), split(lines[i+2]))
+            row_3 = parse.((Float64,), split(lines[i+3]))
+            α[1, 1] = row_1[1]
+            α[1, 2] = row_1[2]
+            α[1, 3] = row_1[3]
+            α[2, 1] = row_2[1]
+            α[2, 2] = row_2[2]
+            α[2, 3] = row_2[3]
+            α[3, 1] = row_3[1]
+            α[3, 2] = row_3[2]
+            α[3, 3] = row_3[3]
+            push!(polarizabilities, α)
+        end
+        if occursin("Total energy", lines[i])
+            push!(all_energies, parse(Float64, split(lines[i])[9]))
+        end
+    end
+    @assert length(all_energies) == 6 * length(polarizabilities) "Number of energies is not 6 times number of polarizabilities. Probably need to update code to work with analytic polarizability calculations."
+
+    for i in 1:6:length(all_energies)
+        E_estimate_1 = 0.5 * (all_energies[i] + all_energies[i+1])
+        E_estimate_2 = 0.5 * (all_energies[i+2] + all_energies[i+3])
+        E_estimate_3 = 0.5 * (all_energies[i+4] + all_energies[i+5])
+        push!(actual_energies, (E_estimate_1 + E_estimate_2 + E_estimate_3) / 3.0)
+    end
+
+    @assert length(actual_energies) == length(polarizabilities)
+
+    return actual_energies, polarizabilities
+end
+
 function write_coords_and_forces(file_prefix::String, coords::Vector{Matrix{Float64}}, labels::Vector{Vector{String}}, fda_dict::Dict{Symbol, Vector{Matrix{Float64}}})
     write_xyz(string(file_prefix, ".xyz"), labels, coords)
     write_xyz(string(file_prefix, "_deformation_forces.xyz"), labels, fda_dict[:Deformation])
