@@ -817,6 +817,61 @@ function parse_polarizabilities_and_energies_from_outfile(file::String)
     return actual_energies, polarizabilities
 end
 
+function parse_polarizabilities_energies_and_distances_from_outfile(file::String)
+    lines = readlines(file)
+
+    actual_energies = Float64[]
+    polarizabilities = Matrix{Float64}[]
+    distances = Float64[]
+
+    temp_distances = Float64[]
+    temp_energies = Float64[]
+    for i in eachindex(lines)
+        if occursin("Polarizability tensor      [a.u.]", lines[i])
+            α = zeros(3, 3)
+            row_1 = parse.((Float64,), split(lines[i+1]))
+            row_2 = parse.((Float64,), split(lines[i+2]))
+            row_3 = parse.((Float64,), split(lines[i+3]))
+            α[1, 1] = row_1[1]
+            α[1, 2] = row_1[2]
+            α[1, 3] = row_1[3]
+            α[2, 1] = row_2[1]
+            α[2, 2] = row_2[2]
+            α[2, 3] = row_2[3]
+            α[3, 1] = row_3[1]
+            α[3, 2] = row_3[2]
+            α[3, 3] = row_3[3]
+
+            # Check that no intermediate calculations failed. If they did,
+            # we just don't store any of the parsed data and move on to
+            # the next set of polarizability caluculations.
+            if length(temp_distances) == 6 && length(temp_energies) == 6
+                push!(polarizabilities, α)
+                for i in 1:6:length(temp_energies)
+                    E_estimate_1 = 0.5 * (temp_energies[1] + temp_energies[2])
+                    E_estimate_2 = 0.5 * (temp_energies[3] + temp_energies[4])
+                    E_estimate_3 = 0.5 * (temp_energies[5] + temp_energies[6])
+                    push!(actual_energies, (E_estimate_1 + E_estimate_2 + E_estimate_3) / 3.0)
+                end
+                push!(distances, temp_distances[1])
+            end
+            temp_distances = Float64[]
+            temp_energies = Float64[]
+        end
+        if occursin("Total energy", lines[i])
+            push!(temp_energies, parse(Float64, split(lines[i])[9]))
+        end
+        if occursin("Distance Matrix", lines[i])
+            push!(temp_distances, parse(Float64, split(lines[i+2])[end]))
+        end
+    end
+
+    @assert length(actual_energies) == length(polarizabilities)
+    @assert length(distances) == length(polarizabilities)
+
+    return distances, actual_energies, polarizabilities
+end
+
 function write_coords_and_forces(file_prefix::String, coords::Vector{Matrix{Float64}}, labels::Vector{Vector{String}}, fda_dict::Dict{Symbol, Vector{Matrix{Float64}}})
     write_xyz(string(file_prefix, ".xyz"), labels, coords)
     write_xyz(string(file_prefix, "_deformation_forces.xyz"), labels, fda_dict[:Deformation])
