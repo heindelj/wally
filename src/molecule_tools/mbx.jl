@@ -39,9 +39,9 @@ function convert_xyz_to_nrg_files(xyz_file::String)
 
     for i_geom in eachindex(geoms)
         i_geom_string = string(i_geom)
-        if i_geom < 10
-            i_geom_string = string("0", i_geom)
-        end
+        #if i_geom < 10
+        #    i_geom_string = string("0", i_geom)
+        #end
         nrg_file = string(nrg_file_prefix, "_", i_geom_string, ".nrg")
         if num_geoms == 1
             nrg_file = string(nrg_file_prefix, ".nrg")

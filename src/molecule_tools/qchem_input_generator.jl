@@ -597,26 +597,20 @@ end
 
 function wb97xv_qzvppd_rem()
     return "\$rem
-  mem_total  16000
-  ideriv                  1
-  incdft                  0
-  incfock                 0
-  jobtype                 sp
-  method                  wB97X-V
-  unrestricted            false
-  basis                   def2-qzvppd
-  scf_algorithm           gdm
-  scf_max_cycles          500
-  scf_guess               sad
-  scf_convergence         8
-  thresh                  14
-  symmetry                0
-  sym_ignore              1
-  gen_scfman              true
-  gen_scfman_final        true
-  internal_stability      false
-  complex                 false
-  chelpg true
+    JOBTYPE sp
+    method wB97X-V
+    BASIS def2-qzvppd
+    XC_GRID 000099000590
+    NL_GRID 1
+    UNRESTRICTED FALSE
+    MAX_SCF_CYCLES 200
+    SYMMETRY FALSE
+    SYM_IGNORE TRUE
+    mem_total  16000
+    BASIS_LIN_DEP_THRESH 8
+    THRESH 14
+    SCF_CONVERGENCE 7
+    SCF_ALGORITHM DIIS_GDM
 \$end
 "
 end

@@ -197,7 +197,7 @@ which is included in the xyz file. Some programs such as AMOEBA can use this for
 Currently this assumes an ion water system! Any time we see an oxygen, we assume it is for water
 and get the connectivity from OHH ordering. If we see an ion, we just give it no connectivity.
 """
-function write_xyz_with_connectivity_and_atom_types(outfile::AbstractString, header::AbstractArray, labels::AbstractArray, geoms::AbstractArray)
+function write_xyz_with_connectivity_and_atom_types(outfile::AbstractString, labels::AbstractVector{String}, geom::AbstractMatrix{Float64})
 
     amoeba_atom_types = Dict(
         "O" => 349,
@@ -213,12 +213,12 @@ function write_xyz_with_connectivity_and_atom_types(outfile::AbstractString, hea
         "I" => 365
     )
 
-    connectivities = [Int[] for _ in eachindex(labels[1])]
-    for i in eachindex(labels[1])
-        if labels[1][i] == "O"
+    connectivities = [Int[] for _ in eachindex(labels)]
+    for i in eachindex(labels)
+        if labels[i] == "O"
             connectivities[i] = [i+1, i+2]
-        elseif labels[1][i] == "H"
-            if labels[1][i-1] == "O"
+        elseif labels[i] == "H"
+            if labels[i-1] == "O"
                 connectivities[i] = [i-1]
             else
                 connectivities[i] = [i-2]
@@ -229,21 +229,13 @@ function write_xyz_with_connectivity_and_atom_types(outfile::AbstractString, hea
     end
 
     mode = "w"
-    if length(header) != length(geoms)
-        header = [header[1] for i in 1:length(geoms)]
-    end
-    if length(labels) != length(geoms)
-        labels = [labels[1] for i in 1:length(geoms)]
-    end
     open(outfile, mode) do io
-        for (i_geom, head) in enumerate(header)
-            write(io, string(head))
-            for (i_coord, atom_label) in enumerate(labels[i_geom])
-                write(io, string(i_coord, " ", atom_label, " ",
-                    join(string.(geoms[i_geom][:,i_coord]), " "), " ", amoeba_atom_types[titlecase(atom_label)], " ",
-                    join(string.(connectivities[i_coord]), " "), "\n")
-                )
-            end
+        write(io, string(length(labels), "\n"))
+        for (i_coord, atom_label) in enumerate(labels)
+            write(io, string(i_coord, " ", atom_label, " ",
+                join(string.(geom[:, i_coord]), " "), " ", amoeba_atom_types[titlecase(atom_label)], " ",
+                join(string.(connectivities[i_coord]), " "), "\n")
+            )
         end
     end
 end

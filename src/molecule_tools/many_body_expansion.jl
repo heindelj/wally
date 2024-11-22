@@ -21,12 +21,12 @@ function get_many_body_geometries(coords::AbstractArray, order::Int)
     subsystem_combos = []
     if eltype(coords) <: AbstractMatrix
         subsystem_combos = Vector{eltype(coords)}(undef, length(subsystem_indices))
-        for i in 1:length(subsystem_indices)
+        for i in eachindex(subsystem_indices)
             subsystem_combos[i] = hcat(getindex(coords, subsystem_indices[i])...)
         end
     elseif eltype(eltype(coords)) <: AbstractString
         subsystem_combos = Vector{eltype(coords)}(undef, length(subsystem_indices))
-        for i in 1:length(subsystem_indices)
+        for i in eachindex(subsystem_indices)
             subsystem_combos[i] = vcat(getindex(coords, subsystem_indices[i])...)
         end
     else
