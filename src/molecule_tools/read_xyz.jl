@@ -197,7 +197,7 @@ which is included in the xyz file. Some programs such as AMOEBA can use this for
 Currently this assumes an ion water system! Any time we see an oxygen, we assume it is for water
 and get the connectivity from OHH ordering. If we see an ion, we just give it no connectivity.
 """
-function write_xyz_with_connectivity_and_atom_types(outfile::AbstractString, labels::AbstractVector{String}, geom::AbstractMatrix{Float64})
+function write_xyz_with_connectivity_and_atom_types(outfile::AbstractString, labels::AbstractVector{String}, geom::AbstractMatrix{Float64}, mode::String = "w")
 
     amoeba_atom_types = Dict(
         "O" => 349,
@@ -228,7 +228,6 @@ function write_xyz_with_connectivity_and_atom_types(outfile::AbstractString, lab
         end
     end
 
-    mode = "w"
     open(outfile, mode) do io
         write(io, string(length(labels), "\n"))
         for (i_coord, atom_label) in enumerate(labels)
