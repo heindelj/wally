@@ -1181,6 +1181,80 @@ function convert_parsed_eda_data_to_linear_format(eda_data::Vector{Dict{Symbol, 
 
 end
 
+function process_EDA_mbe_ion_water_calculation(full_output_file::String, two_body_output_file::String)
+
+    E_h2o = -76.440791829812
+    # TODO: Get the rest of the ion energies at wB97X-V/def2-qzvppd ^^^
+
+    eda_data = Dict(
+        :cls_elec => Float64[],
+        :elec => Float64[],
+        :mod_pauli => Float64[],
+        :pauli => Float64[],
+        :disp => Float64[],
+        :pol => Float64[],
+        :ct => Float64[]
+    )
+
+    labels, coords = parse_xyz_and_eda_from_output!(full_output_file, eda_data)
+    # Everything in here assumes there is a single ion and the rest is water and
+    # that ion comes at the beginning of the xyz coordinates.
+    num_fragments = ((length(labels[1]) - 1) ÷ 3) + 1
+
+    num_ion_water_dimers    = binomial(num_fragments-1, 1)
+
+    two_body_eda_data = Dict(
+        :cls_elec => Float64[],
+        :mod_pauli => Float64[],
+        :disp => Float64[],
+        :pol => Float64[],
+        :ct => Float64[],
+        :int => Float64[],
+        :deform => Float64[],
+        :total => Float64[]
+    )
+
+    # Parse two and three body contributions to EDA MBE #
+    parse_EDA_terms!(two_body_eda_data, two_body_output_file, false)
+
+    # Make tuples of ion-water and water-water #
+    start_ww  = num_ion_water_dimers + 1
+    
+    elec_2body  = (sum(two_body_eda_data[:cls_elec][1:start_ww-1]), sum(two_body_eda_data[:cls_elec][start_ww:end]))
+    pauli_2body = (sum(two_body_eda_data[:mod_pauli][1:start_ww-1]), sum(two_body_eda_data[:mod_pauli][start_ww:end]))
+    disp_2body  = (sum(two_body_eda_data[:disp][1:start_ww-1]), sum(two_body_eda_data[:disp][start_ww:end]))
+    pol_2body   = (sum(two_body_eda_data[:pol][1:start_ww-1]), sum(two_body_eda_data[:pol][start_ww:end]))
+    ct_2body    = (sum(two_body_eda_data[:ct][1:start_ww-1]), sum(two_body_eda_data[:ct][start_ww:end]))
+    
+    elec_mb  = eda_data[:cls_elec][1] - sum(elec_2body)
+    pauli_mb  = eda_data[:mod_pauli][1] - sum(pauli_2body)
+    disp_mb  = eda_data[:disp][1] - sum(disp_2body)
+    pol_mb  = eda_data[:pol][1] - sum(pol_2body)
+    ct_mb  = eda_data[:ct][1] - sum(ct_2body)
+
+    total_eda_data = Dict(
+        :cls_elec => [elec_2body[1], elec_2body[2], elec_mb, eda_data[:cls_elec][1]] / 4.184,
+        :mod_pauli => [pauli_2body[1], pauli_2body[2], pauli_mb, eda_data[:mod_pauli][1]] / 4.184,
+        :disp => [disp_2body[1], disp_2body[2], disp_mb, eda_data[:disp][1]] / 4.184,
+        :pol => [pol_2body[1], pol_2body[2], pol_mb, eda_data[:pol][1]] / 4.184,
+        :ct => [ct_2body[1], ct_2body[2], ct_mb, eda_data[:ct][1]] / 4.184,
+        :int => Float64[
+            elec_2body[1] + pauli_2body[1] + disp_2body[1] + pol_2body[1] + ct_2body[1],
+            elec_2body[2] + pauli_2body[2] + disp_2body[2] + pol_2body[2] + ct_2body[2],
+            elec_mb[1] + pauli_mb[1] + disp_mb[1] + pol_mb[1] + ct_mb[1],
+            eda_data[:cls_elec][1] + eda_data[:mod_pauli][1] + eda_data[:disp][1] + eda_data[:pol][1] + eda_data[:ct][1]
+        ] / 4.184,
+        :deform => Float64[],
+        :total => Float64[]
+    )
+
+    # TODO: Can determine the totals by including the deformation energies. For now, I just leave
+    # this out cause I mainly care about analyzing the many-body contributions to the various terms.
+    #push!(total_eda_data[:total], )
+
+    return labels[1], [MVector{3, Float64}(coords[1][:, i]) for i in eachindex(eachcol(coords[1]))], total_eda_data
+end
+
 function process_EDA_mbe_ion_water_calculation(full_output_file::String, two_body_output_file::String, three_body_output_file::String)
 
     E_h2o = -76.440791829812
@@ -1380,6 +1454,135 @@ function process_EDA_mbe_ion_water_calculation_into_all_many_body_terms(full_out
     return dimer_labels, dimer_coords_out, trimer_labels, trimer_coords_out, full_system_labels, full_system_coords, two_body_eda_data, three_body_eda_data, eda_data
 end
 
+function parse_mbe_eda_ion_water_data_and_write_to_csv_2_body_many_body(csv_outfile::String, xyz_outfile::String)
+
+    all_files = readdir()
+    full_system_files = Int[]
+    two_body_files = Int[]
+    for i in eachindex(all_files)
+        if occursin("full_system", all_files[i])
+            push!(full_system_files, i)
+        end
+        if occursin("2_body", all_files[i])
+            push!(two_body_files, i)
+        end
+    end
+
+    file_pairs = Tuple{Int, Int}[]
+    for i_full in full_system_files
+        full_system_file = all_files[i_full]
+        two_body_file_index = 0
+
+        two_body_file_prefix = split(full_system_file, "full_system.out")[1]
+        for i_two_body in two_body_files
+            if occursin(two_body_file_prefix, all_files[i_two_body])
+                two_body_file_index = i_two_body
+                break
+            end
+        end
+        if (two_body_file_index > 0)
+            push!(file_pairs, (i_full, two_body_file_index))
+        end
+    end
+
+    # Now that we've found all the full_system, 2_body, 3_body triples,
+    # let's parse the structures, and EDA data and write it to a CSV
+    # for further analysis.
+    all_pauli_iw  = zeros(length(file_pairs))
+    all_pauli_ww  = zeros(length(file_pairs))
+    all_elec_iw  = zeros(length(file_pairs))
+    all_elec_ww  = zeros(length(file_pairs))
+    all_disp_iw  = zeros(length(file_pairs))
+    all_disp_ww  = zeros(length(file_pairs))
+    all_pol_iw  = zeros(length(file_pairs))
+    all_pol_ww  = zeros(length(file_pairs))
+    all_ct_iw  = zeros(length(file_pairs))
+    all_ct_ww  = zeros(length(file_pairs))
+
+    all_pauli_mb = zeros(length(file_pairs))
+    all_elec_mb = zeros(length(file_pairs))
+    all_disp_mb = zeros(length(file_pairs))
+    all_pol_mb = zeros(length(file_pairs))
+    all_ct_mb = zeros(length(file_pairs))
+    all_pauli_total = zeros(length(file_pairs))
+    all_elec_total = zeros(length(file_pairs))
+    all_disp_total = zeros(length(file_pairs))
+    all_pol_total = zeros(length(file_pairs))
+    all_ct_total = zeros(length(file_pairs))
+
+    all_geoms = Matrix{Float64}[]
+    all_labels = Vector{String}[]
+    all_ion_labels = String[]
+    all_num_waters = zeros(length(file_pairs))
+    for i in ProgressBar(eachindex(file_pairs))
+        full_labels, full_geom, mbe_eda = process_EDA_mbe_ion_water_calculation(
+            all_files[file_pairs[i][1]],
+            all_files[file_pairs[i][2]]
+        )
+        push!(all_ion_labels, full_labels[1])
+        push!(all_geoms, reduce(hcat, full_geom))
+        push!(all_labels, full_labels)
+        all_pauli_iw[i]    = mbe_eda[:mod_pauli][1]
+        all_pauli_ww[i]    = mbe_eda[:mod_pauli][2]
+        all_pauli_mb[i]   = mbe_eda[:mod_pauli][3]
+        all_pauli_total[i] = mbe_eda[:mod_pauli][4]
+
+        all_elec_iw[i]    = mbe_eda[:cls_elec][1]
+        all_elec_ww[i]    = mbe_eda[:cls_elec][2]
+        all_elec_mb[i]   = mbe_eda[:cls_elec][3]
+        all_elec_total[i] = mbe_eda[:cls_elec][4]
+
+        all_disp_iw[i]    = mbe_eda[:disp][1]
+        all_disp_ww[i]    = mbe_eda[:disp][2]
+        all_disp_mb[i]   = mbe_eda[:disp][3]
+        all_disp_total[i] = mbe_eda[:disp][4]
+
+        all_pol_iw[i]    = mbe_eda[:pol][1]
+        all_pol_ww[i]    = mbe_eda[:pol][2]
+        all_pol_mb[i]   = mbe_eda[:pol][3]
+        all_pol_total[i] = mbe_eda[:pol][4]
+
+        all_ct_iw[i]    = mbe_eda[:ct][1]
+        all_ct_ww[i]    = mbe_eda[:ct][2]
+        all_ct_mb[i]   = mbe_eda[:ct][3]
+        all_ct_total[i] = mbe_eda[:ct][4]
+
+        all_num_waters[i] = (length(full_labels) - 1) / 3
+    end
+
+    final_data = Dict(
+        :pauli_iw => all_pauli_iw,
+        :pauli_ww => all_pauli_ww,
+        :pauli_mb => all_pauli_mb,
+        :pauli => all_pauli_total,
+        :elec_iw => all_elec_iw,
+        :elec_ww => all_elec_ww,
+        :elec_mb => all_elec_mb,
+        :elec => all_elec_total,
+        :disp_iw => all_disp_iw,
+        :disp_ww => all_disp_ww,
+        :disp_mb => all_disp_mb,
+        :disp => all_disp_total,
+        :pol_iw => all_pol_iw,
+        :pol_ww => all_pol_ww,
+        :pol_mb => all_pol_mb,
+        :pol => all_pol_total,
+        :ct_iw => all_ct_iw,
+        :ct_ww => all_ct_ww,
+        :ct_mb => all_ct_mb,
+        :ct => all_ct_total,
+        :num_waters => all_num_waters,
+        :ion_labels => all_ion_labels
+    )
+
+    df = DataFrame(final_data)
+    geom_index = [1:nrow(df)...]
+    df[!, :index] = geom_index
+    write_xyz(xyz_outfile, [string(length(all_labels[i]), "\n") for i in eachindex(all_labels)], all_labels, all_geoms)
+    CSV.write(csv_outfile, df)
+    return
+end
+
 function parse_mbe_eda_ion_water_data_and_write_to_csv(csv_outfile::String, xyz_outfile::String)
 
     all_files = readdir()
@@ -1404,8 +1607,8 @@ function parse_mbe_eda_ion_water_data_and_write_to_csv(csv_outfile::String, xyz_
         two_body_file_index = 0
         three_body_file_index = 0
 
-        two_body_file_prefix = split(full_system_file, "_full_system.out")[1]
-        three_body_file_prefix = split(full_system_file, "_full_system.out")[1]
+        two_body_file_prefix = split(full_system_file, "full_system.out")[1]
+        three_body_file_prefix = split(full_system_file, "full_system.out")[1]
         for i_two_body in two_body_files
             if occursin(two_body_file_prefix, all_files[i_two_body])
                 two_body_file_index = i_two_body
